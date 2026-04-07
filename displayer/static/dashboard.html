@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STS2 AI Thinking</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --bg-secondary: #16213e;
+    --bg-bubble: #0f3460;
+    --text: #e0e0e0;
+    --text-muted: #888;
+    --accent: #e94560;
+    --accent-dim: #533483;
+    --border: #2a2a4a;
+    --green: #4ade80;
+    --red: #f87171;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+
+  header h1 {
+    font-size: 16px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  header h1 .icon { font-size: 20px; }
+
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--red);
+    transition: background 0.3s;
+  }
+
+  .status-dot.connected { background: var(--green); }
+
+  .controls {
+    display: flex;
+    gap: 8px;
+  }
+
+  .controls button {
+    background: var(--bg);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    padding: 4px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+
+  .controls button:hover {
+    color: var(--text);
+    border-color: var(--accent);
+  }
+
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    scroll-behavior: smooth;
+  }
+
+  .message {
+    max-width: 85%;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 14px;
+    line-height: 1.6;
+    animation: fadeIn 0.3s ease;
+    word-wrap: break-word;
+  }
+
+  .message.thinking {
+    background: var(--bg-bubble);
+    border: 1px solid var(--border);
+    align-self: flex-start;
+  }
+
+  .message.action {
+    background: var(--accent-dim);
+    border: 1px solid #6b3fa0;
+    align-self: flex-start;
+  }
+
+  .message.error {
+    background: #3b1111;
+    border: 1px solid #7f1d1d;
+    align-self: flex-start;
+  }
+
+  .message .timestamp {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    display: block;
+  }
+
+  .message .content {
+    white-space: pre-wrap;
+  }
+
+  .cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background: var(--accent);
+    animation: blink 0.7s infinite;
+    vertical-align: text-bottom;
+    margin-left: 2px;
+  }
+
+  @keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    color: var(--text-muted);
+    text-align: center;
+    gap: 12px;
+  }
+
+  .empty-state .icon { font-size: 48px; }
+  .empty-state p { font-size: 14px; max-width: 300px; }
+
+  #scroll-anchor {
+    height: 1px;
+    flex-shrink: 0;
+  }
+
+  /* Scrollbar styling */
+  #messages::-webkit-scrollbar { width: 6px; }
+  #messages::-webkit-scrollbar-track { background: transparent; }
+  #messages::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+  }
+  #messages::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="icon">馃幃</span> STS2 AI Thinking</h1>
+  <div style="display: flex; align-items: center; gap: 16px;">
+    <div class="controls">
+      <button onclick="clearHistory()">Clear</button>
+    </div>
+    <div class="status">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Connecting...</span>
+    </div>
+  </div>
+</header>
+
+<div id="messages">
+  <div class="empty-state" id="emptyState">
+    <div class="icon">馃儚</div>
+    <p>Waiting for AI to start playing...<br>Events will appear here as the AI makes decisions.</p>
+  </div>
+</div>
+<div id="scroll-anchor"></div>
+
+<script>
+const messagesEl = document.getElementById('messages');
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+const emptyState = document.getElementById('emptyState');
+const scrollAnchor = document.getElementById('scroll-anchor');
+
+let autoScroll = true;
+let lastEventId = 0;
+let eventSource = null;
+let typingQueue = [];
+let isTyping = false;
+
+// Detect if user scrolled up to pause auto-scroll
+messagesEl.addEventListener('scroll', () => {
+  const threshold = 50;
+  const atBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < threshold;
+  autoScroll = atBottom;
+});
+
+function scrollToBottom() {
+  if (autoScroll) {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+}
+
+function formatTime(ts) {
+  const d = new Date(ts * 1000);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function createMessageEl(event, animate) {
+  if (emptyState.parentNode) {
+    emptyState.remove();
+  }
+
+  const div = document.createElement('div');
+  div.className = `message ${event.event_type || 'thinking'}`;
+  div.dataset.eventId = event.id;
+
+  const content = document.createElement('span');
+  content.className = 'content';
+
+  const time = document.createElement('span');
+  time.className = 'timestamp';
+  time.textContent = formatTime(event.timestamp);
+
+  div.appendChild(content);
+  div.appendChild(time);
+  messagesEl.appendChild(div);
+
+  if (animate) {
+    typeText(content, event.text);
+  } else {
+    content.textContent = event.text;
+  }
+
+  scrollToBottom();
+  return div;
+}
+
+function typeText(el, text) {
+  typingQueue.push({ el, text });
+  if (!isTyping) {
+    processTypingQueue();
+  }
+}
+
+function processTypingQueue() {
+  if (typingQueue.length === 0) {
+    isTyping = false;
+    return;
+  }
+  isTyping = true;
+  const { el, text } = typingQueue.shift();
+
+  // Add cursor
+  const cursor = document.createElement('span');
+  cursor.className = 'cursor';
+  el.after(cursor);
+
+  let i = 0;
+  const speed = 15; // ms per character
+
+  function tick() {
+    if (i < text.length) {
+      // Add characters in small chunks for efficiency
+      const chunk = text.substring(i, Math.min(i + 2, text.length));
+      el.textContent += chunk;
+      i += chunk.length;
+      scrollToBottom();
+      setTimeout(tick, speed);
+    } else {
+      cursor.remove();
+      processTypingQueue();
+    }
+  }
+  tick();
+}
+
+// Load history on page load
+async function loadHistory() {
+  try {
+    const resp = await fetch(`/events/history?since_id=${lastEventId}`);
+    const events = await resp.json();
+    events.forEach(ev => {
+      if (ev.id > lastEventId) {
+        createMessageEl(ev, false); // No animation for history
+        lastEventId = ev.id;
+      }
+    });
+  } catch (e) {
+    console.error('Failed to load history:', e);
+  }
+}
+
+function setConnected(connected) {
+  statusDot.classList.toggle('connected', connected);
+  statusText.textContent = connected ? 'Connected' : 'Disconnected';
+}
+
+function connectSSE() {
+  if (eventSource) {
+    eventSource.close();
+  }
+
+  eventSource = new EventSource('/events/stream');
+
+  eventSource.onopen = () => {
+    setConnected(true);
+  };
+
+  eventSource.addEventListener('message', (e) => {
+    const event = JSON.parse(e.data);
+    if (event.id > lastEventId) {
+      createMessageEl(event, true); // Animate new events
+      lastEventId = event.id;
+    }
+  });
+
+  eventSource.addEventListener('clear', () => {
+    // Clear all messages
+    messagesEl.innerHTML = '';
+    messagesEl.appendChild(emptyState);
+    lastEventId = 0;
+    typingQueue = [];
+    isTyping = false;
+  });
+
+  eventSource.onerror = () => {
+    setConnected(false);
+    eventSource.close();
+    // Reconnect with exponential backoff
+    setTimeout(connectSSE, 3000);
+  };
+}
+
+async function clearHistory() {
+  try {
+    await fetch('/api/clear', { method: 'POST' });
+    messagesEl.innerHTML = '';
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.id = 'emptyState';
+    empty.innerHTML = '<div class="icon">馃儚</div><p>Waiting for AI to start playing...<br>Events will appear here as the AI makes decisions.</p>';
+    messagesEl.appendChild(empty);
+    lastEventId = 0;
+    typingQueue = [];
+    isTyping = false;
+  } catch (e) {
+    console.error('Failed to clear:', e);
+  }
+}
+
+// Bootstrap
+loadHistory().then(() => {
+  connectSSE();
+});
+</script>
+</body>
+</html>

@@ -8,6 +8,8 @@ applyTo: "**"
 
 > **语言提示：** 游戏为简体中文。地图节点类型、事件文本、商店物品等均为中文显示。
 
+> 🔁 **游戏结束后（胜利或失败），立即执行赛后反思协议** — 见 `sts2-play-game.instructions.md` 和 `sts2-learnings.instructions.md`。
+
 ## 地图路径策略
 
 ### 路径评估框架
@@ -29,12 +31,6 @@ applyTo: "**"
 - **规划幕结构**：第1-14层 = 普通房间，第15层 = Boss。在12-14层规划经过篝火。
 - **未知节点**结果多样（普通怪、事件、商人、宝箱）。视为"中等风险、中等回报"。
 
-### 地图工具使用
-```
-map_choose_node(node_index)  // next_options 数组中的索引
-```
-选择后立即调用 `get_game_state()` 查看进入了什么房间。
-
 ## 事件决策框架
 
 ### 通用原则
@@ -43,18 +39,10 @@ map_choose_node(node_index)  // next_options 数组中的索引
 3. **金币交换事件**：100+金币且奖励能提升牌组质量时接受。
 4. **诅咒事件**：一般避免接受诅咒，除非奖励特别优秀（稀有遗物）。
 5. **移除卡牌事件**：几乎总是接受——移除打击(Strike)/防御(Defend)提升牌组一致性。
-6. **最大HP事件**：永久增加最大生命值（如水果汁/Fruit Juice）在早期非常有价值。
+6. **最大HP事件**：永久增加最大生命值在早期非常有价值。
 
 ### 远古遭遇 (Ancient Encounters)
-1. 反复调用 `event_advance_dialogue()` 直到 `in_dialogue: false`。
-2. 然后像普通事件一样评估并选择选项。
-
-### 事件工具使用
-```
-event_advance_dialogue()               // 远古对话，重复直到 in_dialogue=false
-event_choose_option(option_index)      // 选择选项
-event_choose_option(0)                 // 选择后通常的"继续"选项
-```
+- 反复调用 `event_advance_dialogue()` 直到 `in_dialogue: false`，然后选择选项。
 
 ## 篝火决策 (Rest Site)
 
@@ -65,12 +53,6 @@ event_choose_option(0)                 // 选择后通常的"继续"选项
 | HP > 80%，有好的升级目标 | **锻造 (Smith)** |
 | HP > 80%，有金刚杵(Girya)，使用<3次 | **举重 (Lift)** —— 永久+1力量 |
 | Boss 前，HP < 80% | **休息 (Rest)** |
-
-### 篝火工具使用
-```
-rest_choose_option(option_index)  // 选择休息/锻造等
-proceed_to_map()                  // 离开篝火
-```
 
 ## 商店策略
 
@@ -85,37 +67,16 @@ proceed_to_map()                  // 离开篝火
 - 对当前构筑没有明显收益的遗物
 - 金币<50时的任何东西（为之后的移除卡牌存钱）
 
-### 商店工具使用
-```
-shop_purchase(item_index)  // 购买物品
-proceed_to_map()           // 离开商店
-```
-
 ## 奖励领取策略
 
 ### 领取顺序（从右到左避免索引偏移）
 1. **金币** —— 总是领取
 2. **遗物** —— 几乎总是领取
 3. **药水** —— 有空槽则领取；槽满且新药水更好时先丢弃最差的
-4. **卡牌** —— 仔细评估（参见牌组构筑技能）
-
-### 卡牌奖励评估
-- **无协同则跳过** —— 精简牌组能更频繁抽到关键牌
-- **选能解决问题的牌** —— 缺 AOE？拿 AOE。缺成长？拿成长牌。
-- **升级过的牌价值更高** —— 升级的普通牌可以媲美非普通牌
-- **不要因为有牌就拿** —— 牌组质量 > 牌组数量
-
-### 奖励工具使用
-```
-rewards_claim(reward_index)        // 领取金币/遗物/药水/卡牌
-rewards_pick_card(card_index)      // 选择卡牌奖励
-rewards_skip_card()                // 跳过卡牌奖励
-proceed_to_map()                   // 离开奖励界面
-```
+4. **卡牌** —— 参见牌组构筑技能(sts2-deck-building)评估
 
 ## 宝箱房
-- 领取开启宝箱中的所有遗物。
-- 使用 `treasure_claim_relic(relic_index)` 然后 `proceed_to_map()`。
+- 领取所有遗物：`treasure_claim_relic(relic_index)` 然后 `proceed_to_map()`。
 
 ## 全局资源管理
 
@@ -128,9 +89,3 @@ proceed_to_map()                   // 离开奖励界面
 - HP 是资源，不是分数。花费 HP 获取优势通常是正确的。
 - 根据地图上下一个篝火的位置追踪你的 HP。
 - 如果可以避免，不要在低于70% HP 时进入 Boss 战。
-
-### 药水管理
-- 不要囤积——带着满药水死亡是最差的结果。
-- 永久价值药水（水果汁/Fruit Juice）在任何战斗中立即使用。
-- 战斗药水留给精英和 Boss。
-- 槽满时遇到药水奖励，先用 `discard_potion()` 丢弃最弱的。

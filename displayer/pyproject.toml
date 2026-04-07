@@ -1,0 +1,11 @@
+[project]
+name = "sts2-displayer"
+version = "0.1.0"
+description = "AI Gameplay Thinking Dashboard for STS2 MCP"
+requires-python = ">=3.11"
+dependencies = [
+    "aiohttp>=3.9.0",
+]
+
+[tool.uv]
+dev-dependencies = []

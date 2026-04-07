@@ -8,6 +8,8 @@ applyTo: "**"
 
 > **语言提示：** 游戏为简体中文。卡牌名称和描述将以中文显示。
 
+> 🔁 **游戏结束后（胜利或失败），立即执行赛后反思协议** — 见 `sts2-play-game.instructions.md` 和 `sts2-learnings.instructions.md`。
+
 ## 核心构筑理念
 
 ### 牌组质量 > 牌组数量
