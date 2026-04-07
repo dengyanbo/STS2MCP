@@ -61,10 +61,10 @@ Requires [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0) and the 
 
 ```powershell
 # Pass game path directly:
-.\build.ps1 -GameDir "D:\SteamLibrary\steamapps\common\Slay the Spire 2"
+.\build.ps1 -GameDir "C:\Program Files (x86)\Steam\steamapps\common\Slay the Spire 2"
 
 # Or set it once and forget:
-$env:STS2_GAME_DIR = "D:\SteamLibrary\steamapps\common\Slay the Spire 2"
+$env:STS2_GAME_DIR = "C:\Program Files (x86)\Steam\steamapps\common\Slay the Spire 2"
 .\build.ps1
 ```
 
