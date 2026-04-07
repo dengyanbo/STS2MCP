@@ -2,11 +2,15 @@
 
 ## Project Structure
 
-- **C# mod** (`McpMod.*.cs`) — runs inside STS2, exposes HTTP API on `localhost:15526`
-- **Python MCP server** (`mcp/server.py`) — bridges HTTP API to MCP tools
-- **Skill files** (`.github/instructions/sts2-*.instructions.md`) — auto-loaded gameplay instructions
-- **Learnings** (`.github/instructions/sts2-learnings.instructions.md`) — persistent AI memory, updated after each run
-- **Run log** (`docs/run-log.md`) — detailed per-run history (not auto-loaded)
+| Component | Path | Purpose |
+|---|---|---|
+| C# Mod | `McpMod.*.cs` | In-game HTTP API on `localhost:15526` |
+| MCP Server | `mcp/server.py` | Bridges HTTP API → 70+ MCP tools |
+| Displayer | `displayer/` | Live narration dashboard on `localhost:15580` |
+| Skill Files | `.github/instructions/sts2-*.instructions.md` | Auto-loaded gameplay strategy |
+| Learnings | `.github/instructions/sts2-learnings.instructions.md` | Persistent AI memory, updated after each run |
+| Run Log | `docs/run-log.md` | Detailed per-run history (not auto-loaded) |
+| API Docs | `docs/raw-full.md`, `docs/raw-simplified.md` | HTTP API reference |
 
 ## Skill File Architecture
 
@@ -23,3 +27,12 @@
 After every game (win or loss), the AI executes the **Post-Game Reflection Protocol** (defined in `sts2-play-game`):
 1. Analyze the run → 2. Log to `docs/run-log.md` → 3. Distill insights into `sts2-learnings` → 4. Report to user.
 The learnings file has a **15-entry cap per section** to prevent context bloat.
+
+## Key Mod Features (for AI agents)
+
+- **State in action responses** — Every action returns the updated game state, eliminating redundant `get_game_state()` calls
+- **Auto-advance enemy turns** — `combat_end_turn` polls until the next player turn or combat end
+- **Legal actions** — `legal_actions` array in combat state lists all playable cards with valid targets
+- **Combat analysis** — `combat_analysis` section with damage estimation, unblocked damage, and HP projections
+- **Contextual hints** — `hints` array with situational advice (lethal warnings, kill opportunities, etc.)
+- **Batch operations** — `combat_batch` for multiple actions per call; `rewards_claim_all` for non-card rewards

@@ -6,8 +6,14 @@ as MCP tools for Claude Desktop / Claude Code.
 
 import argparse
 import asyncio
+import atexit
+import functools
 import json
+import shutil
+import subprocess
 import sys
+from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -16,6 +22,48 @@ mcp = FastMCP("sts2")
 
 _base_url: str = "http://localhost:15526"
 _trust_env: bool = True
+_displayer_url: str = "http://localhost:15580"
+_displayer_enabled: bool = True
+
+
+# ---------------------------------------------------------------------------
+# Displayer integration — fire-and-forget notifications to the dashboard
+# ---------------------------------------------------------------------------
+
+async def _notify_displayer(tool_name: str, params: dict, result: str) -> None:
+    """Post a tool-call event to the displayer dashboard (best-effort)."""
+    if not _displayer_enabled:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=3, trust_env=False) as client:
+            await client.post(
+                f"{_displayer_url}/api/events",
+                json={"tool": tool_name, "params": params, "result": result},
+            )
+    except Exception:
+        pass  # Displayer is optional — never block gameplay
+
+
+# Wrap mcp.tool so every registered tool auto-notifies the displayer.
+_orig_mcp_tool = mcp.tool
+
+
+def _instrumented_tool(*deco_args, **deco_kwargs):
+    orig_decorator = _orig_mcp_tool(*deco_args, **deco_kwargs)
+
+    def wrapper(func):
+        @functools.wraps(func)
+        async def instrumented(**kwargs):
+            result = await func(**kwargs)
+            asyncio.create_task(
+                _notify_displayer(func.__name__, kwargs, result)
+            )
+            return result
+        return orig_decorator(instrumented)
+    return wrapper
+
+
+mcp.tool = _instrumented_tool
 
 
 def _sp_url() -> str:
@@ -1122,16 +1170,56 @@ async def mp_crystal_sphere_proceed() -> str:
         return _handle_error(e)
 
 
+def _start_displayer(displayer_url: str) -> subprocess.Popen | None:
+    """Auto-launch the displayer dashboard server as a background process."""
+    displayer_script = Path(__file__).resolve().parent.parent / "displayer" / "server.py"
+    if not displayer_script.exists():
+        print("[sts2-mcp] Displayer script not found, skipping auto-launch", file=sys.stderr)
+        return None
+
+    # Extract port from URL
+    port = str(urlparse(displayer_url).port or 15580)
+
+    uv = shutil.which("uv")
+    if uv:
+        cmd = [uv, "run", str(displayer_script), "--port", port]
+    else:
+        cmd = [sys.executable, str(displayer_script), "--port", port]
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=sys.stderr,
+        )
+        atexit.register(proc.terminate)
+        print(f"[sts2-mcp] Displayer auto-launched (PID {proc.pid}) → http://localhost:{port}", file=sys.stderr)
+        return proc
+    except Exception as e:
+        print(f"[sts2-mcp] Failed to auto-launch displayer: {e}", file=sys.stderr)
+        return None
+
+
 def main():
     parser = argparse.ArgumentParser(description="STS2 MCP Server")
     parser.add_argument("--port", type=int, default=15526, help="Game HTTP server port")
     parser.add_argument("--host", type=str, default="localhost", help="Game HTTP server host")
     parser.add_argument("--no-trust-env", action="store_true", help="Ignore HTTP_PROXY/HTTPS_PROXY environment variables")
+    parser.add_argument("--displayer-url", type=str, default="http://localhost:15580",
+                        help="Displayer dashboard URL")
+    parser.add_argument("--no-displayer", action="store_true",
+                        help="Disable displayer notifications and auto-launch")
     args = parser.parse_args()
 
-    global _base_url, _trust_env
+    global _base_url, _trust_env, _displayer_url, _displayer_enabled
     _base_url = f"http://{args.host}:{args.port}"
     _trust_env = not args.no_trust_env
+    _displayer_url = args.displayer_url
+    _displayer_enabled = not args.no_displayer
+
+    if _displayer_enabled:
+        _start_displayer(_displayer_url)
 
     mcp.run(transport="stdio")
 

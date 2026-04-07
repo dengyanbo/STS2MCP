@@ -20,39 +20,25 @@ VS Code Chat ←stdio→ MCP Server (mcp/server.py)
 
 ## Quick Start
 
-### 1. Start the Dashboard Server
+Just start the MCP server — the dashboard launches automatically:
 
 ```bash
-uv run python displayer/server.py
+uv run --directory mcp python server.py
 ```
 
-The dashboard will be available at **http://localhost:15580**.
-
-### 2. Start the MCP Server (as usual)
-
-The MCP server automatically sends events to `http://localhost:15580` by default.
-No extra flags needed.
-
-### 3. Open the Dashboard
-
-Open http://localhost:15580 in your browser. Events will stream in as the AI plays.
+Then open **http://localhost:15580** in your browser. Events will stream in as the AI plays.
 
 ## Configuration
-
-### Dashboard Server
-
-```bash
-uv run python displayer/server.py --port 15580 --host 0.0.0.0
-```
-
-### MCP Server Integration
 
 ```bash
 # Custom displayer URL
 uv run --directory mcp python server.py --displayer-url http://localhost:15580
 
-# Disable displayer notifications
+# Disable displayer entirely (no auto-launch, no notifications)
 uv run --directory mcp python server.py --no-displayer
+
+# Run displayer standalone (without MCP server)
+uv run displayer/server.py --port 15580 --host 0.0.0.0
 ```
 
 ## Features
