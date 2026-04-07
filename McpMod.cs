@@ -302,7 +302,18 @@ public static partial class McpMod
 
         try
         {
-            var resultTask = RunOnMainThread(() => ExecuteMultiplayerAction(action, parsed));
+            var resultTask = RunOnMainThread(() =>
+            {
+                var result = ExecuteMultiplayerAction(action, parsed);
+
+                if (result.TryGetValue("status", out var s) && s?.ToString() == "ok")
+                {
+                    try { result["game_state"] = BuildMultiplayerGameState(); }
+                    catch { /* state unavailable — action result is still valid */ }
+                }
+
+                return result;
+            });
             var result = resultTask.GetAwaiter().GetResult();
             SendJson(response, result);
         }
@@ -380,10 +391,34 @@ public static partial class McpMod
 
         string action = actionElem.GetString() ?? "";
 
+        string format = request.QueryString["format"] ?? "json";
+
         try
         {
-            var resultTask = RunOnMainThread(() => ExecuteAction(action, parsed));
+            var resultTask = RunOnMainThread(() =>
+            {
+                var result = ExecuteAction(action, parsed);
+
+                // Attach current game state to every successful action response
+                // so the caller doesn't need a separate get_game_state() round-trip.
+                if (result.TryGetValue("status", out var s) && s?.ToString() == "ok")
+                {
+                    try { result["game_state"] = BuildGameState(); }
+                    catch { /* state unavailable — action result is still valid */ }
+                }
+
+                return result;
+            });
             var result = resultTask.GetAwaiter().GetResult();
+
+            if (format == "markdown"
+                && result.TryGetValue("game_state", out var gs)
+                && gs is Dictionary<string, object?> gsDict)
+            {
+                try { result["game_state_markdown"] = FormatAsMarkdown(gsDict); }
+                catch { /* keep JSON fallback */ }
+            }
+
             SendJson(response, result);
         }
         catch (Exception ex)

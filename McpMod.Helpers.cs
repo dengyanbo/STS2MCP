@@ -187,4 +187,42 @@ public static partial class McpMod
         }
         return null;
     }
+
+    /// <summary>
+    /// Parse enemy intent damage labels like "12", "3x4", "15 x2".
+    /// Returns total damage (e.g., "3x4" → 12).
+    /// </summary>
+    internal static bool TryParseIntentDamage(string label, out int totalDamage)
+    {
+        totalDamage = 0;
+        if (string.IsNullOrWhiteSpace(label)) return false;
+
+        // Normalize: remove spaces around 'x' or '×'
+        var normalized = label.Trim();
+
+        // Try "NxM" or "N×M" or "N x M" patterns (multi-hit)
+        foreach (char sep in new[] { 'x', '×', 'X' })
+        {
+            int sepIdx = normalized.IndexOf(sep);
+            if (sepIdx > 0 && sepIdx < normalized.Length - 1)
+            {
+                var leftStr = normalized[..sepIdx].Trim();
+                var rightStr = normalized[(sepIdx + 1)..].Trim();
+                if (int.TryParse(leftStr, out int dmgPer) && int.TryParse(rightStr, out int hits))
+                {
+                    totalDamage = dmgPer * hits;
+                    return true;
+                }
+            }
+        }
+
+        // Simple number
+        if (int.TryParse(normalized, out int simple))
+        {
+            totalDamage = simple;
+            return true;
+        }
+
+        return false;
+    }
 }

@@ -243,6 +243,60 @@ public static partial class McpMod
                 sb.AppendLine();
             }
         }
+
+        // Legal actions summary
+        if (battle.TryGetValue("legal_actions", out var laObj) && laObj is List<Dictionary<string, object?>> legalActions && legalActions.Count > 0)
+        {
+            sb.AppendLine("## Legal Actions");
+            foreach (var la in legalActions)
+            {
+                string type = la["type"]?.ToString() ?? "";
+                switch (type)
+                {
+                    case "play_card":
+                        string target = la.TryGetValue("requires_target", out var rt) && rt is true ? " (needs target)" : "";
+                        sb.AppendLine($"- play_card index={la["card_index"]} **{la["card_name"]}**{target}");
+                        break;
+                    case "use_potion":
+                        string pTarget = la.TryGetValue("requires_target", out var pt2) && pt2 is true ? " (needs target)" : "";
+                        sb.AppendLine($"- use_potion slot={la["slot"]} **{la["potion_name"]}**{pTarget}");
+                        break;
+                    case "end_turn":
+                        sb.AppendLine("- end_turn");
+                        break;
+                    default:
+                        sb.AppendLine($"- {type}");
+                        break;
+                }
+            }
+            sb.AppendLine();
+        }
+
+        // Combat analysis
+        if (battle.TryGetValue("combat_analysis", out var caObj) && caObj is Dictionary<string, object?> ca)
+        {
+            sb.AppendLine("## Combat Analysis");
+            bool attacking = ca.TryGetValue("enemies_attacking", out var ea) && ea is true;
+            if (attacking)
+            {
+                sb.AppendLine($"- **Incoming damage:** {ca["total_incoming_damage"]} | Current block: {ca["current_block"]}");
+                sb.AppendLine($"- **Unblocked damage:** {ca["unblocked_damage"]} | HP after attack: {ca["hp_after_attack"]}/{ca["player_hp"]}");
+            }
+            else
+            {
+                sb.AppendLine("- **No enemy attacks this turn** — prioritize offense!");
+            }
+            sb.AppendLine();
+        }
+
+        // Hints
+        if (battle.TryGetValue("hints", out var hintsObj) && hintsObj is List<string> hints && hints.Count > 0)
+        {
+            sb.AppendLine("## 💡 Hints");
+            foreach (var hint in hints)
+                sb.AppendLine($"- {hint}");
+            sb.AppendLine();
+        }
     }
 
     private static void FormatDeckPilesMarkdown(StringBuilder sb, Dictionary<string, object?> player)

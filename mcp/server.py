@@ -16,31 +16,6 @@ mcp = FastMCP("sts2")
 
 _base_url: str = "http://localhost:15526"
 _trust_env: bool = True
-_displayer_url: str | None = "http://localhost:15580"
-
-
-async def _notify_displayer(tool_name: str, params: dict, result: str) -> None:
-    """Fire-and-forget notification to the displayer dashboard."""
-    if _displayer_url is None:
-        return
-    try:
-        async with httpx.AsyncClient(timeout=2, trust_env=_trust_env) as client:
-            await client.post(
-                f"{_displayer_url}/api/events",
-                json={"tool": tool_name, "params": params, "result": result},
-            )
-    except Exception:
-        pass  # Never let displayer failures affect gameplay
-
-
-def _fire_displayer(tool_name: str, params: dict, result: str) -> None:
-    """Schedule displayer notification without blocking the tool call."""
-    if _displayer_url is None:
-        return
-    try:
-        asyncio.create_task(_notify_displayer(tool_name, params, result))
-    except RuntimeError:
-        pass
 
 
 def _sp_url() -> str:
@@ -51,36 +26,80 @@ def _mp_url() -> str:
     return f"{_base_url}/api/v1/multiplayer"
 
 
-async def _get(params: dict | None = None, _tool: str = "get_game_state") -> str:
+async def _get(params: dict | None = None) -> str:
     async with httpx.AsyncClient(timeout=10, trust_env=_trust_env) as client:
         r = await client.get(_sp_url(), params=params)
         r.raise_for_status()
-        _fire_displayer(_tool, params or {}, r.text)
         return r.text
 
 
-async def _post(body: dict, _tool: str = "") -> str:
+async def _post(body: dict) -> str:
+    async with httpx.AsyncClient(timeout=10, trust_env=_trust_env) as client:
+        r = await client.post(
+            _sp_url(), json=body, params={"format": "markdown"}
+        )
+        r.raise_for_status()
+        return _format_action_response(r.text)
+
+
+async def _raw_post(body: dict) -> str:
+    """Post without formatting — returns raw JSON for internal parsing."""
     async with httpx.AsyncClient(timeout=10, trust_env=_trust_env) as client:
         r = await client.post(_sp_url(), json=body)
         r.raise_for_status()
-        _fire_displayer(_tool or body.get("action", "unknown"), body, r.text)
         return r.text
 
 
-async def _mp_get(params: dict | None = None, _tool: str = "mp_get_game_state") -> str:
+async def _mp_get(params: dict | None = None) -> str:
     async with httpx.AsyncClient(timeout=10, trust_env=_trust_env) as client:
         r = await client.get(_mp_url(), params=params)
         r.raise_for_status()
-        _fire_displayer(_tool, params or {}, r.text)
         return r.text
 
 
-async def _mp_post(body: dict, _tool: str = "") -> str:
+async def _mp_post(body: dict) -> str:
     async with httpx.AsyncClient(timeout=10, trust_env=_trust_env) as client:
-        r = await client.post(_mp_url(), json=body)
+        r = await client.post(
+            _mp_url(), json=body, params={"format": "markdown"}
+        )
         r.raise_for_status()
-        _fire_displayer(_tool or body.get("action", "unknown"), body, r.text)
-        return r.text
+        return _format_action_response(r.text)
+
+
+def _format_action_response(text: str) -> str:
+    """Extract the embedded game_state_markdown from action responses.
+
+    The mod now returns game state alongside every successful action.
+    If a markdown-formatted state is present, append it so the caller
+    sees the updated state without a separate get_game_state() call.
+    """
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return text
+
+    parts: list[str] = []
+
+    # Action result summary
+    status = data.get("status", "")
+    message = data.get("message", "")
+    if status == "error":
+        error = data.get("error", message)
+        return f"Error: {error}"
+    if message:
+        parts.append(f"✓ {message}")
+
+    # Append markdown state if available
+    md = data.get("game_state_markdown")
+    if md:
+        parts.append("")
+        parts.append(md)
+    elif "game_state" in data:
+        # Fallback: return raw JSON state (shouldn't happen normally)
+        parts.append("")
+        parts.append(json.dumps(data["game_state"], indent=2, ensure_ascii=False))
+
+    return "\n".join(parts) if parts else text
 
 
 def _handle_error(e: Exception) -> str:
@@ -108,7 +127,7 @@ async def get_game_state(format: str = "markdown") -> str:
         format: "markdown" for human-readable output, "json" for structured data.
     """
     try:
-        return await _get({"format": format}, _tool="get_game_state")
+        return await _get({"format": format})
     except Exception as e:
         return _handle_error(e)
 
@@ -127,7 +146,7 @@ async def use_potion(slot: int, target: str | None = None) -> str:
     if target is not None:
         body["target"] = target
     try:
-        return await _post(body, _tool="use_potion")
+        return await _post(body)
     except Exception as e:
         return _handle_error(e)
 
@@ -143,7 +162,7 @@ async def discard_potion(slot: int) -> str:
         slot: Potion slot index to discard (as shown in game state).
     """
     try:
-        return await _post({"action": "discard_potion", "slot": slot}, _tool="discard_potion")
+        return await _post({"action": "discard_potion", "slot": slot})
     except Exception as e:
         return _handle_error(e)
 
@@ -156,7 +175,7 @@ async def proceed_to_map() -> str:
     Does NOT work for events — use event_choose_option() with the Proceed option's index.
     """
     try:
-        return await _post({"action": "proceed"}, _tool="proceed_to_map")
+        return await _post({"action": "proceed"})
     except Exception as e:
         return _handle_error(e)
 
@@ -181,18 +200,142 @@ async def combat_play_card(card_index: int, target: str | None = None) -> str:
     if target is not None:
         body["target"] = target
     try:
-        return await _post(body, _tool="combat_play_card")
+        return await _post(body)
     except Exception as e:
         return _handle_error(e)
 
 
 @mcp.tool()
 async def combat_end_turn() -> str:
-    """[Combat] End the player's current turn."""
+    """[Combat] End the player's current turn.
+
+    Automatically waits for the enemy turn to complete and returns the
+    next player turn state, so you do NOT need to call get_game_state()
+    afterwards.
+    """
     try:
-        return await _post({"action": "end_turn"}, _tool="combat_end_turn")
+        result_text = await _post({"action": "end_turn"})
     except Exception as e:
         return _handle_error(e)
+
+    # The mod already embeds game_state in the response via _post.
+    # However, the state captured right after end_turn may still show
+    # the enemy turn in progress. Poll until we see the next player
+    # turn (is_play_phase=true) or a non-combat state (combat ended).
+    try:
+        for _ in range(20):  # up to ~5 seconds
+            await asyncio.sleep(0.25)
+            raw = await _get({"format": "json"})
+            data = json.loads(raw)
+            state_type = data.get("state_type", "")
+
+            # Combat ended → rewards, map, event, etc.
+            if state_type not in ("monster", "elite", "boss"):
+                return await _get({"format": "markdown"})
+
+            # Still in combat — check if it's the player's turn again
+            battle = data.get("battle", {})
+            if battle.get("is_play_phase", False):
+                return await _get({"format": "markdown"})
+    except Exception:
+        pass  # polling failed, return what we have
+
+    # Fallback: return whatever state we have now
+    try:
+        return await _get({"format": "markdown"})
+    except Exception:
+        return result_text
+
+
+@mcp.tool()
+async def combat_batch(actions: list[dict]) -> str:
+    """[Combat] Execute multiple combat actions in a single call.
+
+    Plays cards, uses potions, and optionally ends the turn — all in one
+    round-trip. Each action is executed sequentially with a short delay
+    to let the game process animations. Card indices are based on the
+    hand state at execution time, NOT the original state — the tool
+    re-reads the hand after each action to resolve correct indices by
+    card name.
+
+    Args:
+        actions: Ordered list of action dicts. Each dict has:
+            - type: "play_card" | "use_potion" | "end_turn"
+            - card_index: (play_card) 0-based index in current hand
+            - target: (play_card/use_potion) entity_id if needed
+            - slot: (use_potion) potion slot index
+
+    Example: [
+        {"type": "use_potion", "slot": 0},
+        {"type": "play_card", "card_index": 4, "target": "JAW_WORM_0"},
+        {"type": "play_card", "card_index": 2},
+        {"type": "end_turn"}
+    ]
+    """
+    results: list[str] = []
+
+    for i, action in enumerate(actions):
+        action_type = action.get("type", "")
+
+        try:
+            if action_type == "play_card":
+                body: dict = {
+                    "action": "play_card",
+                    "card_index": action["card_index"],
+                }
+                if "target" in action:
+                    body["target"] = action["target"]
+                raw = await _raw_post(body)
+            elif action_type == "use_potion":
+                body = {"action": "use_potion", "slot": action["slot"]}
+                if "target" in action:
+                    body["target"] = action["target"]
+                raw = await _raw_post(body)
+            elif action_type == "end_turn":
+                raw = await _raw_post({"action": "end_turn"})
+            else:
+                results.append(f"[{i}] ✗ Unknown action type: {action_type}")
+                continue
+
+            data = json.loads(raw)
+            status = data.get("status", "error")
+            msg = data.get("message", data.get("error", ""))
+            if status == "ok":
+                results.append(f"[{i}] ✓ {msg}")
+            else:
+                results.append(f"[{i}] ✗ {msg}")
+                break  # stop on first error
+
+        except Exception as e:
+            results.append(f"[{i}] ✗ {_handle_error(e)}")
+            break
+
+        # Short delay to let the game process the action
+        if action_type != "end_turn" and i < len(actions) - 1:
+            await asyncio.sleep(0.15)
+
+    # If the last action was end_turn, wait for enemy turn to complete
+    if actions and actions[-1].get("type") == "end_turn":
+        try:
+            for _ in range(20):
+                await asyncio.sleep(0.25)
+                raw = await _get({"format": "json"})
+                data = json.loads(raw)
+                st = data.get("state_type", "")
+                if st not in ("monster", "elite", "boss"):
+                    break
+                if data.get("battle", {}).get("is_play_phase", False):
+                    break
+        except Exception:
+            pass
+
+    # Get final state
+    try:
+        state = await _get({"format": "markdown"})
+    except Exception:
+        state = "(Could not fetch final state)"
+
+    return "\n".join(results) + "\n\n" + state
 
 
 # ---------------------------------------------------------------------------
@@ -211,7 +354,7 @@ async def combat_select_card(card_index: int) -> str:
         card_index: 0-based index of the card in the selectable hand cards (as shown in game state).
     """
     try:
-        return await _post({"action": "combat_select_card", "card_index": card_index}, _tool="combat_select_card")
+        return await _post({"action": "combat_select_card", "card_index": card_index})
     except Exception as e:
         return _handle_error(e)
 
@@ -224,7 +367,7 @@ async def combat_confirm_selection() -> str:
     use this to confirm the selection. Only works when the confirm button is enabled.
     """
     try:
-        return await _post({"action": "combat_confirm_selection"}, _tool="combat_confirm_selection")
+        return await _post({"action": "combat_confirm_selection"})
     except Exception as e:
         return _handle_error(e)
 
@@ -248,7 +391,7 @@ async def rewards_claim(reward_index: int) -> str:
     Claiming from right to left can help maintain more stable indices for remaining rewards, as rewards will always shift left to fill in gaps.
     """
     try:
-        return await _post({"action": "claim_reward", "index": reward_index}, _tool="rewards_claim")
+        return await _post({"action": "claim_reward", "index": reward_index})
     except Exception as e:
         return _handle_error(e)
 
@@ -261,7 +404,7 @@ async def rewards_pick_card(card_index: int) -> str:
         card_index: 0-based index of the card to add to the deck.
     """
     try:
-        return await _post({"action": "select_card_reward", "card_index": card_index}, _tool="rewards_pick_card")
+        return await _post({"action": "select_card_reward", "card_index": card_index})
     except Exception as e:
         return _handle_error(e)
 
@@ -270,9 +413,71 @@ async def rewards_pick_card(card_index: int) -> str:
 async def rewards_skip_card() -> str:
     """[Rewards] Skip the card reward without selecting a card."""
     try:
-        return await _post({"action": "skip_card_reward"}, _tool="rewards_skip_card")
+        return await _post({"action": "skip_card_reward"})
     except Exception as e:
         return _handle_error(e)
+
+
+@mcp.tool()
+async def rewards_claim_all() -> str:
+    """[Rewards] Claim all non-card rewards (gold, relics, potions) in one call.
+
+    Automatically claims all available rewards from right-to-left to avoid
+    index shifting issues. Stops if a card reward is encountered (you must
+    handle card selection separately via rewards_pick_card or rewards_skip_card).
+
+    Returns the final state, which may be:
+    - card_reward: if there's a card reward to select/skip
+    - rewards: if some rewards remain
+    - map: if all rewards were claimed and proceed was triggered
+    """
+    claimed: list[str] = []
+
+    for _ in range(10):  # safety limit
+        try:
+            raw = await _get({"format": "json"})
+            data = json.loads(raw)
+        except Exception as e:
+            return _handle_error(e)
+
+        state_type = data.get("state_type", "")
+
+        if state_type == "card_reward":
+            # Stop — card reward needs manual decision
+            claimed.append("→ Card reward awaiting selection")
+            break
+
+        if state_type != "rewards":
+            break  # no longer on rewards screen
+
+        items = data.get("rewards", {}).get("items", [])
+        if not items:
+            break
+
+        # Claim from highest index to lowest (right-to-left)
+        idx = items[-1].get("index", len(items) - 1)
+        reward_type = items[-1].get("type", "unknown")
+        try:
+            result_raw = await _raw_post({"action": "claim_reward", "index": idx})
+            result = json.loads(result_raw)
+            if result.get("status") == "ok":
+                claimed.append(f"✓ Claimed {reward_type}: {result.get('message', '')}")
+            else:
+                claimed.append(f"✗ {result.get('error', result.get('message', ''))}")
+                break
+        except Exception as e:
+            claimed.append(f"✗ {_handle_error(e)}")
+            break
+
+        await asyncio.sleep(0.1)
+
+    # Get final state
+    try:
+        state = await _get({"format": "markdown"})
+    except Exception:
+        state = "(Could not fetch final state)"
+
+    return "\n".join(claimed) + "\n\n" + state
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +493,7 @@ async def map_choose_node(node_index: int) -> str:
         node_index: 0-based index of the node from the next_options list.
     """
     try:
-        return await _post({"action": "choose_map_node", "index": node_index}, _tool="map_choose_node")
+        return await _post({"action": "choose_map_node", "index": node_index})
     except Exception as e:
         return _handle_error(e)
 
@@ -306,7 +511,7 @@ async def rest_choose_option(option_index: int) -> str:
         option_index: 0-based index of the option from the rest site state.
     """
     try:
-        return await _post({"action": "choose_rest_option", "index": option_index}, _tool="rest_choose_option")
+        return await _post({"action": "choose_rest_option", "index": option_index})
     except Exception as e:
         return _handle_error(e)
 
@@ -327,7 +532,7 @@ async def shop_purchase(item_index: int) -> str:
         item_index: 0-based index of the item from the shop state.
     """
     try:
-        return await _post({"action": "shop_purchase", "index": item_index}, _tool="shop_purchase")
+        return await _post({"action": "shop_purchase", "index": item_index})
     except Exception as e:
         return _handle_error(e)
 
@@ -348,7 +553,7 @@ async def event_choose_option(option_index: int) -> str:
         option_index: 0-based index of the unlocked option.
     """
     try:
-        return await _post({"action": "choose_event_option", "index": option_index}, _tool="event_choose_option")
+        return await _post({"action": "choose_event_option", "index": option_index})
     except Exception as e:
         return _handle_error(e)
 
@@ -360,7 +565,7 @@ async def event_advance_dialogue() -> str:
     Click through dialogue text in ancient events. Call repeatedly until options appear.
     """
     try:
-        return await _post({"action": "advance_dialogue"}, _tool="event_advance_dialogue")
+        return await _post({"action": "advance_dialogue"})
     except Exception as e:
         return _handle_error(e)
 
@@ -383,7 +588,7 @@ async def deck_select_card(card_index: int) -> str:
         card_index: 0-based index of the card (as shown in game state).
     """
     try:
-        return await _post({"action": "select_card", "index": card_index}, _tool="deck_select_card")
+        return await _post({"action": "select_card", "index": card_index})
     except Exception as e:
         return _handle_error(e)
 
@@ -397,7 +602,7 @@ async def deck_confirm_selection() -> str:
     Not needed for choose-a-card screens where picking is immediate.
     """
     try:
-        return await _post({"action": "confirm_selection"}, _tool="deck_confirm_selection")
+        return await _post({"action": "confirm_selection"})
     except Exception as e:
         return _handle_error(e)
 
@@ -411,7 +616,7 @@ async def deck_cancel_selection() -> str:
     Otherwise, closes the card selection screen (only if cancellation is allowed).
     """
     try:
-        return await _post({"action": "cancel_selection"}, _tool="deck_cancel_selection")
+        return await _post({"action": "cancel_selection"})
     except Exception as e:
         return _handle_error(e)
 
@@ -429,7 +634,7 @@ async def bundle_select(bundle_index: int) -> str:
         bundle_index: 0-based index of the bundle.
     """
     try:
-        return await _post({"action": "select_bundle", "index": bundle_index}, _tool="bundle_select")
+        return await _post({"action": "select_bundle", "index": bundle_index})
     except Exception as e:
         return _handle_error(e)
 
@@ -438,7 +643,7 @@ async def bundle_select(bundle_index: int) -> str:
 async def bundle_confirm_selection() -> str:
     """[Bundle Selection] Confirm the currently previewed bundle."""
     try:
-        return await _post({"action": "confirm_bundle_selection"}, _tool="bundle_confirm_selection")
+        return await _post({"action": "confirm_bundle_selection"})
     except Exception as e:
         return _handle_error(e)
 
@@ -447,7 +652,7 @@ async def bundle_confirm_selection() -> str:
 async def bundle_cancel_selection() -> str:
     """[Bundle Selection] Cancel the current bundle preview."""
     try:
-        return await _post({"action": "cancel_bundle_selection"}, _tool="bundle_cancel_selection")
+        return await _post({"action": "cancel_bundle_selection"})
     except Exception as e:
         return _handle_error(e)
 
@@ -467,7 +672,7 @@ async def relic_select(relic_index: int) -> str:
         relic_index: 0-based index of the relic (as shown in game state).
     """
     try:
-        return await _post({"action": "select_relic", "index": relic_index}, _tool="relic_select")
+        return await _post({"action": "select_relic", "index": relic_index})
     except Exception as e:
         return _handle_error(e)
 
@@ -476,7 +681,7 @@ async def relic_select(relic_index: int) -> str:
 async def relic_skip() -> str:
     """[Relic Selection] Skip the relic selection without choosing a relic."""
     try:
-        return await _post({"action": "skip_relic_selection"}, _tool="relic_skip")
+        return await _post({"action": "skip_relic_selection"})
     except Exception as e:
         return _handle_error(e)
 
@@ -497,7 +702,7 @@ async def treasure_claim_relic(relic_index: int) -> str:
         relic_index: 0-based index of the relic (as shown in game state).
     """
     try:
-        return await _post({"action": "claim_treasure_relic", "index": relic_index}, _tool="treasure_claim_relic")
+        return await _post({"action": "claim_treasure_relic", "index": relic_index})
     except Exception as e:
         return _handle_error(e)
 
@@ -515,7 +720,7 @@ async def crystal_sphere_set_tool(tool: str) -> str:
         tool: Either "big" or "small".
     """
     try:
-        return await _post({"action": "crystal_sphere_set_tool", "tool": tool}, _tool="crystal_sphere_set_tool")
+        return await _post({"action": "crystal_sphere_set_tool", "tool": tool})
     except Exception as e:
         return _handle_error(e)
 
@@ -529,7 +734,7 @@ async def crystal_sphere_click_cell(x: int, y: int) -> str:
         y: Cell y-coordinate.
     """
     try:
-        return await _post({"action": "crystal_sphere_click_cell", "x": x, "y": y}, _tool="crystal_sphere_click_cell")
+        return await _post({"action": "crystal_sphere_click_cell", "x": x, "y": y})
     except Exception as e:
         return _handle_error(e)
 
@@ -538,7 +743,7 @@ async def crystal_sphere_click_cell(x: int, y: int) -> str:
 async def crystal_sphere_proceed() -> str:
     """[Crystal Sphere] Continue after the Crystal Sphere minigame finishes."""
     try:
-        return await _post({"action": "crystal_sphere_proceed"}, _tool="crystal_sphere_proceed")
+        return await _post({"action": "crystal_sphere_proceed"})
     except Exception as e:
         return _handle_error(e)
 
@@ -560,7 +765,7 @@ async def mp_get_game_state(format: str = "markdown") -> str:
         format: "markdown" for human-readable output, "json" for structured data.
     """
     try:
-        return await _mp_get({"format": format}, _tool="mp_get_game_state")
+        return await _mp_get({"format": format})
     except Exception as e:
         return _handle_error(e)
 
@@ -580,7 +785,7 @@ async def mp_combat_play_card(card_index: int, target: str | None = None) -> str
     if target is not None:
         body["target"] = target
     try:
-        return await _mp_post(body, _tool="mp_combat_play_card")
+        return await _mp_post(body)
     except Exception as e:
         return _handle_error(e)
 
@@ -593,7 +798,7 @@ async def mp_combat_end_turn() -> str:
     players have submitted. Use mp_combat_undo_end_turn() to retract.
     """
     try:
-        return await _mp_post({"action": "end_turn"}, _tool="mp_combat_end_turn")
+        return await _mp_post({"action": "end_turn"})
     except Exception as e:
         return _handle_error(e)
 
@@ -606,7 +811,7 @@ async def mp_combat_undo_end_turn() -> str:
     Only works if other players haven't all committed yet.
     """
     try:
-        return await _mp_post({"action": "undo_end_turn"}, _tool="mp_combat_undo_end_turn")
+        return await _mp_post({"action": "undo_end_turn"})
     except Exception as e:
         return _handle_error(e)
 
@@ -623,7 +828,7 @@ async def mp_use_potion(slot: int, target: str | None = None) -> str:
     if target is not None:
         body["target"] = target
     try:
-        return await _mp_post(body, _tool="mp_use_potion")
+        return await _mp_post(body)
     except Exception as e:
         return _handle_error(e)
 
@@ -636,7 +841,7 @@ async def mp_discard_potion(slot: int) -> str:
         slot: Potion slot index to discard (as shown in game state).
     """
     try:
-        return await _mp_post({"action": "discard_potion", "slot": slot}, _tool="mp_discard_potion")
+        return await _mp_post({"action": "discard_potion", "slot": slot})
     except Exception as e:
         return _handle_error(e)
 
@@ -652,7 +857,7 @@ async def mp_map_vote(node_index: int) -> str:
         node_index: 0-based index of the node from the next_options list.
     """
     try:
-        return await _mp_post({"action": "choose_map_node", "index": node_index}, _tool="mp_map_vote")
+        return await _mp_post({"action": "choose_map_node", "index": node_index})
     except Exception as e:
         return _handle_error(e)
 
@@ -668,7 +873,7 @@ async def mp_event_choose_option(option_index: int) -> str:
         option_index: 0-based index of the unlocked option.
     """
     try:
-        return await _mp_post({"action": "choose_event_option", "index": option_index}, _tool="mp_event_choose_option")
+        return await _mp_post({"action": "choose_event_option", "index": option_index})
     except Exception as e:
         return _handle_error(e)
 
@@ -677,7 +882,7 @@ async def mp_event_choose_option(option_index: int) -> str:
 async def mp_event_advance_dialogue() -> str:
     """[Multiplayer Event] Advance ancient event dialogue."""
     try:
-        return await _mp_post({"action": "advance_dialogue"}, _tool="mp_event_advance_dialogue")
+        return await _mp_post({"action": "advance_dialogue"})
     except Exception as e:
         return _handle_error(e)
 
@@ -692,7 +897,7 @@ async def mp_rest_choose_option(option_index: int) -> str:
         option_index: 0-based index of the option.
     """
     try:
-        return await _mp_post({"action": "choose_rest_option", "index": option_index}, _tool="mp_rest_choose_option")
+        return await _mp_post({"action": "choose_rest_option", "index": option_index})
     except Exception as e:
         return _handle_error(e)
 
@@ -707,7 +912,7 @@ async def mp_shop_purchase(item_index: int) -> str:
         item_index: 0-based index of the item.
     """
     try:
-        return await _mp_post({"action": "shop_purchase", "index": item_index}, _tool="mp_shop_purchase")
+        return await _mp_post({"action": "shop_purchase", "index": item_index})
     except Exception as e:
         return _handle_error(e)
 
@@ -720,7 +925,7 @@ async def mp_rewards_claim(reward_index: int) -> str:
         reward_index: 0-based index of the reward.
     """
     try:
-        return await _mp_post({"action": "claim_reward", "index": reward_index}, _tool="mp_rewards_claim")
+        return await _mp_post({"action": "claim_reward", "index": reward_index})
     except Exception as e:
         return _handle_error(e)
 
@@ -733,7 +938,7 @@ async def mp_rewards_pick_card(card_index: int) -> str:
         card_index: 0-based index of the card to add to the deck.
     """
     try:
-        return await _mp_post({"action": "select_card_reward", "card_index": card_index}, _tool="mp_rewards_pick_card")
+        return await _mp_post({"action": "select_card_reward", "card_index": card_index})
     except Exception as e:
         return _handle_error(e)
 
@@ -742,7 +947,7 @@ async def mp_rewards_pick_card(card_index: int) -> str:
 async def mp_rewards_skip_card() -> str:
     """[Multiplayer Rewards] Skip the card reward."""
     try:
-        return await _mp_post({"action": "skip_card_reward"}, _tool="mp_rewards_skip_card")
+        return await _mp_post({"action": "skip_card_reward"})
     except Exception as e:
         return _handle_error(e)
 
@@ -754,7 +959,7 @@ async def mp_proceed_to_map() -> str:
     Works from: rewards screen, rest site, shop.
     """
     try:
-        return await _mp_post({"action": "proceed"}, _tool="mp_proceed_to_map")
+        return await _mp_post({"action": "proceed"})
     except Exception as e:
         return _handle_error(e)
 
@@ -767,7 +972,7 @@ async def mp_deck_select_card(card_index: int) -> str:
         card_index: 0-based index of the card.
     """
     try:
-        return await _mp_post({"action": "select_card", "index": card_index}, _tool="mp_deck_select_card")
+        return await _mp_post({"action": "select_card", "index": card_index})
     except Exception as e:
         return _handle_error(e)
 
@@ -776,7 +981,7 @@ async def mp_deck_select_card(card_index: int) -> str:
 async def mp_deck_confirm_selection() -> str:
     """[Multiplayer Card Selection] Confirm the current card selection."""
     try:
-        return await _mp_post({"action": "confirm_selection"}, _tool="mp_deck_confirm_selection")
+        return await _mp_post({"action": "confirm_selection"})
     except Exception as e:
         return _handle_error(e)
 
@@ -785,7 +990,7 @@ async def mp_deck_confirm_selection() -> str:
 async def mp_deck_cancel_selection() -> str:
     """[Multiplayer Card Selection] Cancel the current card selection."""
     try:
-        return await _mp_post({"action": "cancel_selection"}, _tool="mp_deck_cancel_selection")
+        return await _mp_post({"action": "cancel_selection"})
     except Exception as e:
         return _handle_error(e)
 
@@ -798,7 +1003,7 @@ async def mp_bundle_select(bundle_index: int) -> str:
         bundle_index: 0-based index of the bundle.
     """
     try:
-        return await _mp_post({"action": "select_bundle", "index": bundle_index}, _tool="mp_bundle_select")
+        return await _mp_post({"action": "select_bundle", "index": bundle_index})
     except Exception as e:
         return _handle_error(e)
 
@@ -807,7 +1012,7 @@ async def mp_bundle_select(bundle_index: int) -> str:
 async def mp_bundle_confirm_selection() -> str:
     """[Multiplayer Bundle Selection] Confirm the currently previewed bundle."""
     try:
-        return await _mp_post({"action": "confirm_bundle_selection"}, _tool="mp_bundle_confirm_selection")
+        return await _mp_post({"action": "confirm_bundle_selection"})
     except Exception as e:
         return _handle_error(e)
 
@@ -816,7 +1021,7 @@ async def mp_bundle_confirm_selection() -> str:
 async def mp_bundle_cancel_selection() -> str:
     """[Multiplayer Bundle Selection] Cancel the current bundle preview."""
     try:
-        return await _mp_post({"action": "cancel_bundle_selection"}, _tool="mp_bundle_cancel_selection")
+        return await _mp_post({"action": "cancel_bundle_selection"})
     except Exception as e:
         return _handle_error(e)
 
@@ -829,7 +1034,7 @@ async def mp_combat_select_card(card_index: int) -> str:
         card_index: 0-based index of the card in the selectable hand cards.
     """
     try:
-        return await _mp_post({"action": "combat_select_card", "card_index": card_index}, _tool="mp_combat_select_card")
+        return await _mp_post({"action": "combat_select_card", "card_index": card_index})
     except Exception as e:
         return _handle_error(e)
 
@@ -838,7 +1043,7 @@ async def mp_combat_select_card(card_index: int) -> str:
 async def mp_combat_confirm_selection() -> str:
     """[Multiplayer Combat Selection] Confirm the in-combat card selection."""
     try:
-        return await _mp_post({"action": "combat_confirm_selection"}, _tool="mp_combat_confirm_selection")
+        return await _mp_post({"action": "combat_confirm_selection"})
     except Exception as e:
         return _handle_error(e)
 
@@ -851,7 +1056,7 @@ async def mp_relic_select(relic_index: int) -> str:
         relic_index: 0-based index of the relic.
     """
     try:
-        return await _mp_post({"action": "select_relic", "index": relic_index}, _tool="mp_relic_select")
+        return await _mp_post({"action": "select_relic", "index": relic_index})
     except Exception as e:
         return _handle_error(e)
 
@@ -860,7 +1065,7 @@ async def mp_relic_select(relic_index: int) -> str:
 async def mp_relic_skip() -> str:
     """[Multiplayer Relic Selection] Skip the relic selection."""
     try:
-        return await _mp_post({"action": "skip_relic_selection"}, _tool="mp_relic_skip")
+        return await _mp_post({"action": "skip_relic_selection"})
     except Exception as e:
         return _handle_error(e)
 
@@ -876,7 +1081,7 @@ async def mp_treasure_claim_relic(relic_index: int) -> str:
         relic_index: 0-based index of the relic.
     """
     try:
-        return await _mp_post({"action": "claim_treasure_relic", "index": relic_index}, _tool="mp_treasure_claim_relic")
+        return await _mp_post({"action": "claim_treasure_relic", "index": relic_index})
     except Exception as e:
         return _handle_error(e)
 
@@ -889,7 +1094,7 @@ async def mp_crystal_sphere_set_tool(tool: str) -> str:
         tool: Either "big" or "small".
     """
     try:
-        return await _mp_post({"action": "crystal_sphere_set_tool", "tool": tool}, _tool="mp_crystal_sphere_set_tool")
+        return await _mp_post({"action": "crystal_sphere_set_tool", "tool": tool})
     except Exception as e:
         return _handle_error(e)
 
@@ -903,7 +1108,7 @@ async def mp_crystal_sphere_click_cell(x: int, y: int) -> str:
         y: Cell y-coordinate.
     """
     try:
-        return await _mp_post({"action": "crystal_sphere_click_cell", "x": x, "y": y}, _tool="mp_crystal_sphere_click_cell")
+        return await _mp_post({"action": "crystal_sphere_click_cell", "x": x, "y": y})
     except Exception as e:
         return _handle_error(e)
 
@@ -912,7 +1117,7 @@ async def mp_crystal_sphere_click_cell(x: int, y: int) -> str:
 async def mp_crystal_sphere_proceed() -> str:
     """[Multiplayer Crystal Sphere] Continue after the Crystal Sphere minigame finishes."""
     try:
-        return await _mp_post({"action": "crystal_sphere_proceed"}, _tool="mp_crystal_sphere_proceed")
+        return await _mp_post({"action": "crystal_sphere_proceed"})
     except Exception as e:
         return _handle_error(e)
 
@@ -922,19 +1127,11 @@ def main():
     parser.add_argument("--port", type=int, default=15526, help="Game HTTP server port")
     parser.add_argument("--host", type=str, default="localhost", help="Game HTTP server host")
     parser.add_argument("--no-trust-env", action="store_true", help="Ignore HTTP_PROXY/HTTPS_PROXY environment variables")
-    parser.add_argument("--displayer-url", type=str, default="http://localhost:15580",
-                        help="Dashboard server URL for AI thinking display")
-    parser.add_argument("--no-displayer", action="store_true",
-                        help="Disable displayer dashboard notifications")
     args = parser.parse_args()
 
-    global _base_url, _trust_env, _displayer_url
+    global _base_url, _trust_env
     _base_url = f"http://{args.host}:{args.port}"
     _trust_env = not args.no_trust_env
-    _displayer_url = None if args.no_displayer else args.displayer_url
-
-    if _displayer_url:
-        print(f"Displayer dashboard: {_displayer_url}", file=sys.stderr)
 
     mcp.run(transport="stdio")
 

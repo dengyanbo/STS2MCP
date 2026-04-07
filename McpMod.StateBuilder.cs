@@ -267,6 +267,157 @@ public static partial class McpMod
         }
         battle["enemies"] = enemies;
 
+        // Legal actions summary for AI decision-making
+        if (CombatManager.Instance.IsPlayPhase && !CombatManager.Instance.PlayerActionsDisabled)
+        {
+            var player = LocalContext.GetMe(runState);
+            if (player != null)
+            {
+                var legalActions = new List<Dictionary<string, object?>>();
+
+                // Playable cards
+                var pcs = player.PlayerCombatState;
+                if (pcs != null)
+                {
+                    int ci = 0;
+                    foreach (var card in pcs.Hand.Cards)
+                    {
+                        if (card.CanPlay(out _, out _))
+                        {
+                            var action = new Dictionary<string, object?>
+                            {
+                                ["type"] = "play_card",
+                                ["card_index"] = ci,
+                                ["card_name"] = SafeGetText(() => card.Title)
+                            };
+                            if (card.TargetType == TargetType.AnyEnemy)
+                            {
+                                action["requires_target"] = true;
+                                var validTargets = new List<string>();
+                                var tc = new Dictionary<string, int>();
+                                foreach (var e in combatState.Enemies)
+                                {
+                                    if (!e.IsAlive) continue;
+                                    string bId = e.Monster?.Id.Entry ?? "unknown";
+                                    if (!tc.TryGetValue(bId, out int cnt)) cnt = 0;
+                                    tc[bId] = cnt + 1;
+                                    validTargets.Add($"{bId}_{cnt}");
+                                }
+                                action["valid_targets"] = validTargets;
+                            }
+                            legalActions.Add(action);
+                        }
+                        ci++;
+                    }
+                }
+
+                // Usable potions
+                int si = 0;
+                foreach (var potion in player.PotionSlots)
+                {
+                    if (potion != null && !potion.IsQueued && potion.PassesCustomUsabilityCheck
+                        && potion.Usage != PotionUsage.Automatic
+                        && (potion.Usage != PotionUsage.CombatOnly || CombatManager.Instance.IsInProgress))
+                    {
+                        var action = new Dictionary<string, object?>
+                        {
+                            ["type"] = "use_potion",
+                            ["slot"] = si,
+                            ["potion_name"] = SafeGetText(() => potion.Title)
+                        };
+                        if (potion.TargetType == TargetType.AnyEnemy)
+                            action["requires_target"] = true;
+                        legalActions.Add(action);
+                    }
+                    si++;
+                }
+
+                // End turn is always legal during play phase
+                legalActions.Add(new Dictionary<string, object?> { ["type"] = "end_turn" });
+
+                battle["legal_actions"] = legalActions;
+
+                // Combat analysis: incoming damage estimation
+                try
+                {
+                    var analysis = new Dictionary<string, object?>();
+                    int totalIncoming = 0;
+                    bool anyAttacking = false;
+
+                    foreach (var enemyData in enemies)
+                    {
+                        if (enemyData.TryGetValue("intents", out var intObj) && intObj is List<Dictionary<string, object?>> intents)
+                        {
+                            foreach (var intent in intents)
+                            {
+                                if (intent.TryGetValue("type", out var tObj) && tObj?.ToString() == "Attack"
+                                    && intent.TryGetValue("label", out var lbl) && lbl is string label)
+                                {
+                                    anyAttacking = true;
+                                    // Parse "12" or "3x4" style labels
+                                    if (TryParseIntentDamage(label, out int dmg))
+                                        totalIncoming += dmg;
+                                }
+                            }
+                        }
+                    }
+
+                    int currentBlock = player.Creature.Block;
+                    analysis["enemies_attacking"] = anyAttacking;
+                    analysis["total_incoming_damage"] = totalIncoming;
+                    analysis["current_block"] = currentBlock;
+                    analysis["unblocked_damage"] = Math.Max(0, totalIncoming - currentBlock);
+                    analysis["player_hp"] = player.Creature.CurrentHp;
+                    analysis["hp_after_attack"] = Math.Max(0, player.Creature.CurrentHp - Math.Max(0, totalIncoming - currentBlock));
+
+                    battle["combat_analysis"] = analysis;
+
+                    // Generate contextual hints
+                    var hints = new List<string>();
+                    if (!anyAttacking)
+                        hints.Add("No enemies attacking — go all-out offense, skip blocking.");
+                    else if (totalIncoming > 0 && totalIncoming <= currentBlock)
+                        hints.Add($"Already have enough block ({currentBlock}) for incoming {totalIncoming} — focus on damage.");
+                    else if (totalIncoming > 0)
+                    {
+                        int unblocked = totalIncoming - currentBlock;
+                        int hpAfter = player.Creature.CurrentHp - unblocked;
+                        if (hpAfter <= 0)
+                            hints.Add($"LETHAL DANGER: {unblocked} unblocked damage will kill you! Block or kill enemies NOW.");
+                        else if (unblocked > player.Creature.MaxHp / 3)
+                            hints.Add($"Heavy incoming ({unblocked} unblocked) — prioritize block/Weak.");
+                    }
+
+                    // Check for low-HP enemies that could be killed
+                    foreach (var ed in enemies)
+                    {
+                        if (ed.TryGetValue("hp", out var hpObj) && hpObj is int hp && hp <= 5)
+                            hints.Add($"Enemy {ed["name"]} at {hp} HP — easy kill, reduces incoming damage.");
+                    }
+
+                    // Buffing enemies hint
+                    foreach (var ed in enemies)
+                    {
+                        if (ed.TryGetValue("intents", out var iObj) && iObj is List<Dictionary<string, object?>> ii)
+                        {
+                            foreach (var intent in ii)
+                            {
+                                if (intent.TryGetValue("type", out var t) && t?.ToString() == "Buff")
+                                {
+                                    hints.Add($"Enemy {ed["name"]} is buffing — offense turn, kill before it scales.");
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (hints.Count > 0)
+                        battle["hints"] = hints;
+                }
+                catch { /* analysis is best-effort */ }
+            }
+        }
+
         return battle;
     }
 
