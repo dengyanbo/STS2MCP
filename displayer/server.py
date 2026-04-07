@@ -83,18 +83,15 @@ async def handle_events_stream(request: web.Request) -> web.StreamResponse:
                 event = await asyncio.wait_for(queue.get(), timeout=30)
             except asyncio.TimeoutError:
                 await response.write(b": keepalive\n\n")
-                await response.drain()
                 continue
 
             if event is None:
                 await response.write(b"event: clear\ndata: {}\n\n")
-                await response.drain()
                 continue
 
             payload = json.dumps(event.to_dict(), ensure_ascii=False)
             msg = f"id: {event.id}\nevent: message\ndata: {payload}\n\n"
             await response.write(msg.encode("utf-8"))
-            await response.drain()
     except (ConnectionResetError, ConnectionError, asyncio.CancelledError):
         pass
     finally:
