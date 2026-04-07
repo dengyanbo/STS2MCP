@@ -53,8 +53,21 @@ async def handle_post_event(request: web.Request) -> web.Response:
         return web.json_response({"status": "ok", "suppressed": True})
 
     event_type = "thinking"
-    if any(tool_name.startswith(p) for p in ("combat_play", "mp_combat_play", "use_potion", "mp_use_potion")):
+    if any(tool_name.startswith(p) for p in (
+        "combat_play", "mp_combat_play", "combat_batch",
+        "use_potion", "mp_use_potion",
+    )):
         event_type = "action"
+    elif any(tool_name.startswith(p) for p in (
+        "combat_end_turn", "mp_combat_end_turn",
+    )):
+        event_type = "turn_end"
+    elif tool_name in ("get_game_state", "mp_get_game_state"):
+        event_type = "state"
+    elif any(tool_name.startswith(p) for p in (
+        "map_choose", "mp_map_vote", "proceed_to_map", "mp_proceed",
+    )):
+        event_type = "navigation"
 
     event = store.append(
         text=text,

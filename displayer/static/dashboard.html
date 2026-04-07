@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>STS2 AI Thinking</title>
+<title>STS2 AI 思考面板</title>
 <style>
   :root {
     --bg: #1a1a2e;
@@ -16,6 +16,9 @@
     --border: #2a2a4a;
     --green: #4ade80;
     --red: #f87171;
+    --yellow: #fbbf24;
+    --blue: #60a5fa;
+    --cyan: #22d3ee;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -98,7 +101,7 @@
   }
 
   .message {
-    max-width: 85%;
+    max-width: 95%;
     padding: 10px 14px;
     border-radius: 12px;
     font-size: 14px;
@@ -116,6 +119,32 @@
   .message.action {
     background: var(--accent-dim);
     border: 1px solid #6b3fa0;
+    align-self: flex-start;
+  }
+
+  .message.state {
+    background: #0d2847;
+    border: 1px solid #1e3a5f;
+    align-self: flex-start;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .message.turn_end {
+    background: #1a1a2e;
+    border: 1px solid var(--yellow);
+    border-left: 3px solid var(--yellow);
+    align-self: stretch;
+    text-align: center;
+    font-size: 13px;
+    color: var(--yellow);
+    padding: 6px 14px;
+  }
+
+  .message.navigation {
+    background: #0d2e1e;
+    border: 1px solid #1a5c3a;
     align-self: flex-start;
   }
 
@@ -188,14 +217,14 @@
 <body>
 
 <header>
-  <h1><span class="icon">🎮</span> STS2 AI Thinking</h1>
+  <h1><span class="icon">🎮</span> STS2 AI 思考面板</h1>
   <div style="display: flex; align-items: center; gap: 16px;">
     <div class="controls">
-      <button onclick="clearHistory()">Clear</button>
+      <button onclick="clearHistory()">清除</button>
     </div>
     <div class="status">
       <div class="status-dot" id="statusDot"></div>
-      <span id="statusText">Connecting...</span>
+      <span id="statusText">连接中...</span>
     </div>
   </div>
 </header>
@@ -203,7 +232,7 @@
 <div id="messages">
   <div class="empty-state" id="emptyState">
     <div class="icon">🎮</div>
-    <p>Waiting for AI to start playing...<br>Events will appear here as the AI makes decisions.</p>
+    <p>等待 AI 开始游戏...<br>AI 的思考过程将实时显示在这里。</p>
   </div>
 </div>
 <div id="scroll-anchor"></div>
@@ -260,7 +289,12 @@ function createMessageEl(event, animate) {
   messagesEl.appendChild(div);
 
   if (animate) {
-    typeText(content, event.text);
+    // Skip animation for long multi-line messages (state reports)
+    if (event.text && event.text.length > 100) {
+      content.textContent = event.text;
+    } else {
+      typeText(content, event.text);
+    }
   } else {
     content.textContent = event.text;
   }
@@ -326,7 +360,7 @@ async function loadHistory() {
 
 function setConnected(connected) {
   statusDot.classList.toggle('connected', connected);
-  statusText.textContent = connected ? 'Connected' : 'Disconnected';
+  statusText.textContent = connected ? '已连接' : '已断开';
 }
 
 function connectSSE() {
@@ -372,7 +406,7 @@ async function clearHistory() {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
     empty.id = 'emptyState';
-    empty.innerHTML = '<div class="icon">🎮</div><p>Waiting for AI to start playing...<br>Events will appear here as the AI makes decisions.</p>';
+    empty.innerHTML = '<div class="icon">🎮</div><p>等待 AI 开始游戏...<br>AI 的思考过程将实时显示在这里。</p>';
     messagesEl.appendChild(empty);
     lastEventId = 0;
     typingQueue = [];
