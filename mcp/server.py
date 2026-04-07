@@ -9,7 +9,9 @@ import asyncio
 import atexit
 import functools
 import json
+import logging
 import shutil
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -17,6 +19,10 @@ from urllib.parse import urlparse
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+
+# Suppress noisy httpx request logging
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 mcp = FastMCP("sts2")
 
@@ -1170,6 +1176,12 @@ async def mp_crystal_sphere_proceed() -> str:
         return _handle_error(e)
 
 
+def _port_in_use(port: int) -> bool:
+    """Check if a TCP port is already bound."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(("localhost", port)) == 0
+
+
 def _start_displayer(displayer_url: str) -> subprocess.Popen | None:
     """Auto-launch the displayer dashboard server as a background process."""
     displayer_script = Path(__file__).resolve().parent.parent / "displayer" / "server.py"
@@ -1178,23 +1190,27 @@ def _start_displayer(displayer_url: str) -> subprocess.Popen | None:
         return None
 
     # Extract port from URL
-    port = str(urlparse(displayer_url).port or 15580)
+    port = urlparse(displayer_url).port or 15580
+
+    if _port_in_use(port):
+        print(f"[sts2-mcp] Displayer already running on port {port}", file=sys.stderr)
+        return None
 
     uv = shutil.which("uv")
     if uv:
-        cmd = [uv, "run", str(displayer_script), "--port", port]
+        cmd = [uv, "run", str(displayer_script), "--port", str(port)]
     else:
-        cmd = [sys.executable, str(displayer_script), "--port", port]
+        cmd = [sys.executable, str(displayer_script), "--port", str(port)]
 
     try:
         proc = subprocess.Popen(
             cmd,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
-            stderr=sys.stderr,
+            stderr=subprocess.DEVNULL,
         )
         atexit.register(proc.terminate)
-        print(f"[sts2-mcp] Displayer auto-launched (PID {proc.pid}) → http://localhost:{port}", file=sys.stderr)
+        print(f"[sts2-mcp] Displayer launched on port {port} (PID {proc.pid})", file=sys.stderr)
         return proc
     except Exception as e:
         print(f"[sts2-mcp] Failed to auto-launch displayer: {e}", file=sys.stderr)
