@@ -23,7 +23,13 @@
 - `docs/raw-simplified.md` — 快速 API 参考
 - `.github/instructions/sts2-*.instructions.md` — 你的游戏技能集
 
+## 3 层记忆架构
+- **热记忆**（自动加载）：`sts2-learnings.instructions.md` — 确认规律、工作假设、敌人速查、协同索引
+- **温记忆**（按需读取）：`docs/bestiary.md`（敌人图鉴）、`docs/card-atlas.md`（卡牌图鉴，按角色分区）、`docs/relic-atlas.md`（遗物图鉴）
+- **冷记忆**（赛后写入）：`docs/run-log.md`（局历史）、`docs/run-stats.md`（跨局统计）
+
 ## 开发相关
 - 构建命令：`.\build.ps1 -GameDir "<STS2 安装路径>"`
 - 需要 .NET 9 SDK 和 STS2 游戏
+- python环境在uv中
 - MCP 服务器：`uv run --directory mcp python server.py`

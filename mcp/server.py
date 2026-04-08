@@ -8,6 +8,7 @@ import argparse
 import asyncio
 import atexit
 import functools
+import inspect
 import json
 import logging
 import shutil
@@ -15,6 +16,7 @@ import socket
 import subprocess
 import sys
 from pathlib import Path
+from typing import Annotated
 from urllib.parse import urlparse
 
 import httpx
@@ -50,21 +52,65 @@ async def _notify_displayer(tool_name: str, params: dict, result: str) -> None:
         pass  # Displayer is optional — never block gameplay
 
 
-# Wrap mcp.tool so every registered tool auto-notifies the displayer.
+# Wrap mcp.tool so every registered tool auto-notifies the displayer
+# and adds a universal `reason` parameter for narration.
 _orig_mcp_tool = mcp.tool
+
+# Annotation for the injected `reason` parameter (Pydantic extracts the description).
+try:
+    from pydantic import Field as _Field
+    _REASON_ANNOTATION = Annotated[
+        str | None,
+        _Field(
+            default=None,
+            description=(
+                "Brief strategic reasoning for this decision "
+                "(displayed in the live narration dashboard)"
+            ),
+        ),
+    ]
+except Exception:
+    _REASON_ANNOTATION = str | None
 
 
 def _instrumented_tool(*deco_args, **deco_kwargs):
     orig_decorator = _orig_mcp_tool(*deco_args, **deco_kwargs)
 
     def wrapper(func):
+        # Dynamically add an optional `reason` kwarg so the LLM can
+        # explain its decision; the value is forwarded to the displayer
+        # narration engine but never sent to the game mod HTTP API.
+        try:
+            sig = inspect.signature(func)
+            if "reason" not in sig.parameters:
+                params = list(sig.parameters.values())
+                params.append(inspect.Parameter(
+                    "reason",
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    default=None,
+                    annotation=_REASON_ANNOTATION,
+                ))
+                new_sig = sig.replace(parameters=params)
+            else:
+                new_sig = None
+        except (ValueError, TypeError):
+            new_sig = None
+
         @functools.wraps(func)
         async def instrumented(**kwargs):
+            reason = kwargs.pop("reason", None)
             result = await func(**kwargs)
+            notify_params = dict(kwargs)
+            if reason is not None:
+                notify_params["reason"] = reason
             asyncio.create_task(
-                _notify_displayer(func.__name__, kwargs, result)
+                _notify_displayer(func.__name__, notify_params, result)
             )
             return result
+
+        if new_sig is not None:
+            instrumented.__signature__ = new_sig
+
         return orig_decorator(instrumented)
     return wrapper
 

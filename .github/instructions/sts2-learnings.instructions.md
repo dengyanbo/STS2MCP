@@ -4,30 +4,65 @@ applyTo: "**"
 
 # STS2 MCP — AI Learnings (Persistent Memory)
 
-Accumulated insights from past runs. Each entry tagged with source run.
+3 层记忆架构中的**热记忆层**。每个回合自动加载。保持精简。
 
-## Boss Tactics
+> **记忆架构：** 热记忆（本文件，自动加载） → 温记忆（`docs/bestiary.md`、`docs/card-atlas.md`、`docs/relic-atlas.md`，按需读取） → 冷记忆（`docs/run-log.md`、`docs/run-stats.md`、EventStore SQLite）
+>
+> **角色标注规则：** 每条标注 `[通用]` 或 `[角色名]`。卡池相关的洞察必须标注角色。
 
-- **Vantom (墨影幻灵):** Has 9 layers of 滑溜 — each hit only deals 1 damage until stripped. Prioritize multi-hit cards (Twin Strike, Double Tap, Whirlwind) to strip it fast. DO NOT waste high-damage single-hit cards while 滑溜 is active. Boss also floods deck with 伤口 (Wounds) — exhaust mechanics are critical. [Run #1]
-- **Vantom scales Strength:** Gains +2 Str per buff turn. The longer the fight, the harder it hits (29+ damage by Round 7). Rush damage after stripping 滑溜, don't play defensively. [Run #1]
+## 置信度规则 (Confidence Rules)
 
-## Combat Insights
+- **工作假设 → 确认规律**：3+ 局支持，0 局反驳
+- **确认规律 → 写入策略文件**：5+ 局 + 高影响力（每 5 局策略审查时执行）
+- **工作假设被反驳**：2+ 局矛盾证据 → 移除或修正
+- **每个分区上限 15 条**。超出时删除最旧或已被取代的条目。
 
-- **Play power cards ASAP in boss fights:** 薪火之源 (Erupting Inferno) costs 2 energy but gives +1 energy EVERY turn after. Playing it Turn 1 saves energy over a 10+ turn boss fight. Delaying it to Turn 4 lost ~3 energy total. [Run #1]
-- **Wound/Status clog is lethal in long fights:** Drawing 3+ unplayable cards in a 5-card hand means only 2 playable cards. Against a boss doing 20+ damage, this is a death sentence. Prioritize exhaust cards (Burning Pact, Sentinel, True Grit) if the boss adds status cards. [Run #1]
-- **Multi-hit attacks have hidden value:** Against 滑溜/Plated Armor/Block-heavy enemies, Twin Strike/Heavy Blade/multi-hit cards strip buffs faster per energy spent. Value them higher in card rewards when these enemies are expected. [Run #1]
+## 确认规律 (Confirmed Patterns)
 
-## Deck Building
+> 3+ 局验证的硬规则。决策时**优先遵循**。
 
-- **Don't skip exhaust cards before Act 1 boss:** At least one exhaust source (True Grit, Burning Pact, Fiend Fire) helps manage status cards from bosses. Wound clog killed this run. [Run #1]
-- **17-card deck is good size** but must include utility, not just damage + block. Need at least 1 card that handles status effects. [Run #1]
+*(暂无 — 需要更多局数积累)*
 
-## Resource Management
+## 工作假设 (Working Hypotheses)
 
-- **Save potions for boss/elites:** Used Fire Potion on Inklets (trivial fight) instead of boss. The 20 damage potion would have stripped 1 more 滑溜 layer AND dealt real damage on the boss. [Run #1]
-- **Strength Potion timing is correct on Turn 1:** Using it before playing Inflame+ maximized total Strength across the fight. This was done correctly. [Run #1]
+> 1-2 局观察的软指引。决策时**参考但不盲从**。标注 `[N/M 确认]`（N 次确认 / M 次相关遭遇）。
 
-## Map Pathing
+### 战斗 (Combat)
+- [通用] 能力牌在 Boss 战第一回合打出，越早越好。薪火之源延迟到 T4 损失 ~3 能量。 [1/1, Run #1]
+- [通用] 状态牌填充（伤口/黏液）在长战斗中致命。5 张手牌抽到 3+ 不可打牌 = 死亡螺旋。必须有消耗机制。 [1/2, Run #1 #2]
+- [通用] 多段攻击对滑溜/甲层/高格挡敌人效率远超单发大伤害。选卡时提升多段攻击评价。 [1/1, Run #1]
+- [通用] 状态添加型敌人优先击杀（如叶史莱姆），伤害型敌人后杀。 [1/1, Run #2]
 
-- **Two elites in Act 1 is correct** when healthy with rest sites after. Got 金刚杵 and 精致折扇 — both game-defining relics. Always go for elites when >70% HP with rest site accessible. [Run #1]
-- **Egg event: always eat the egg** for +7 max HP. The Byrdonis Egg card is a dead draw that requires spending a rest site action to hatch — not worth the opportunity cost. [Run #1]
+### 构筑 (Deck Building)
+- [铁甲战士] Act 1 Boss 前至少需要 1 张消耗源（真实勇气/燃烧契约/炼狱火）应对状态牌。 [1/1, Run #1]
+- [通用] 17 张左右是好牌组大小，但必须包含功能牌，不能只有伤害+格挡。 [1/1, Run #1]
+- [铁甲战士] 势不可当+ 需要能量/格挡成长搭配（薪火之源/壁垒），不能单独扛输出。 [1/1, Run #2]
+- [铁甲战士] 武装极其高效（5挡+升级手牌仅1费），有折扣时必买。 [1/1, Run #2]
+
+### 资源管理 (Resource Management)
+- [通用] 药水留给 Boss/精英，不在弱怪上浪费。火焰药水用在墨虫上而非 Boss 是错误。 [1/1, Run #1]
+- [通用] 力量药水 T1 使用正确——在打出力量叠加牌前使用，最大化整场收益。 [1/1, Run #1]
+
+### 地图路径 (Map Pathing)
+- [通用] Act 1 两个精英是正确选择（HP>70% 且后有篝火）。遗物价值在整局累积。 [1/1, Run #1]
+- [通用] 蛋事件永远吃蛋（+7 最大 HP）。蛋卡牌是死牌，用篝火孵化不值得。 [1/1, Run #1]
+- [通用] HP<70% 不打精英。79% 进旧日雕像看似安全但 25 伤害连击无法承受。 [1/1, Run #2]
+
+## 敌人速查 (Enemy Quick Reference)
+
+> 每个敌人一行概要。**详细档案见 `docs/bestiary.md`**（温记忆，遇到时读取）。
+
+| 敌人 | 核心机制 | 速查应对 | 来源 |
+|---|---|---|---|
+| 墨影幻灵 (Vantom) | 9层滑溜 + 伤口填充 + 力量成长 | 多段攻击剥滑溜 → 消耗清伤口 → 速战速决 | Run #1 |
+| 旧日雕像 (Bygone Effigy) | 127HP, 休眠→增益→25+伤害, Slow | 休眠/增益回合同时 setup+输出, 非攻击先打 | Run #2 |
+| 史莱姆群 (Slimes) | 大量黏液状态牌填充 | 优先杀叶史莱姆(加状态)，枝史莱姆后杀 | Run #2 |
+
+## 协同索引 (Synergy Index)
+
+> 已验证的卡牌/遗物组合。标注角色和置信度。
+
+| 组合 | 效果 | 置信度 | 来源 |
+|---|---|---|---|
+| [铁甲战士] 薪火之源 + 多段攻击 | +1能量/回合 + 力量倍增 = 核心引擎 | 1/1 | Run #1 |
+| [铁甲战士] 金刚杵 + 长战斗 | 每场 +1 力量永久累积，精英/Boss 战价值极高 | 1/1 | Run #1 |

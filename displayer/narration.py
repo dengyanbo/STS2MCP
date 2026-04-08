@@ -2,6 +2,7 @@
 
 Translates MCP tool calls + results into detailed Chinese gameplay commentary.
 Provides situation analysis, strategic reasoning, and action context.
+All output is in Simplified Chinese with human-like commentary.
 """
 
 from __future__ import annotations
@@ -10,38 +11,118 @@ import json
 from typing import Any
 
 
+# ---------------------------------------------------------------------------
+# Node type / keyword translation
+# ---------------------------------------------------------------------------
+
+_NODE_TYPE_ZH: dict[str, str] = {
+    "Monster": "普通怪", "monster": "普通怪",
+    "Elite": "精英怪", "elite": "精英怪",
+    "Boss": "首领", "boss": "首领",
+    "Rest": "篝火", "rest": "篝火", "rest_site": "篝火",
+    "Shop": "商店", "shop": "商店",
+    "Treasure": "宝箱", "treasure": "宝箱",
+    "Event": "事件", "event": "事件", "Unknown": "未知", "unknown": "未知",
+    "?": "未知",
+}
+
+
+def _zh_node(ntype: str) -> str:
+    """Translate a node/state type to Chinese."""
+    return _NODE_TYPE_ZH.get(ntype, ntype)
+
+
+_RARITY_ZH: dict[str, str] = {
+    "Common": "普通", "common": "普通",
+    "Uncommon": "罕见", "uncommon": "罕见",
+    "Rare": "稀有", "rare": "稀有",
+    "Special": "特殊", "special": "特殊",
+    "Basic": "基础", "basic": "基础",
+    "Curse": "诅咒", "curse": "诅咒",
+    "Status": "状态", "status": "状态",
+}
+
+
+def _zh_rarity(r: str) -> str:
+    return _RARITY_ZH.get(r, r)
+
+
+_CARD_TYPE_ZH: dict[str, str] = {
+    "Attack": "攻击", "attack": "攻击",
+    "Skill": "技能", "skill": "技能",
+    "Power": "能力", "power": "能力",
+    "Curse": "诅咒", "curse": "诅咒",
+    "Status": "状态", "status": "状态",
+}
+
+
+def _zh_ctype(t: str) -> str:
+    return _CARD_TYPE_ZH.get(t, t)
+
+
+_ITEM_TYPE_ZH: dict[str, str] = {
+    "card": "卡牌", "relic": "遗物", "potion": "药水",
+    "card_removal": "移除卡牌",
+}
+
+
+def _zh_item_type(t: str) -> str:
+    return _ITEM_TYPE_ZH.get(t, t)
+
+
 class NarrationEngine:
     def __init__(self):
         self._last_state: dict | None = None
         self._last_tool: str | None = None
-        self._turn_actions: list[str] = []  # track actions within a turn
+        self._turn_actions: list[str] = []
+        self._last_error: str | None = None
+        self._action_count: int = 0
 
     def narrate(self, tool_name: str, params: dict, result: str) -> str | None:
         """Generate rich Chinese narration for a tool call."""
         result_data = self._try_parse_json(result)
+
+        # Detect errors from the result and track them
+        if result_data and result_data.get("status") == "error":
+            self._last_error = result_data.get("error", result_data.get("message", "未知错误"))
 
         # Cache game state for context
         if tool_name in ("get_game_state", "mp_get_game_state"):
             if result_data:
                 self._last_state = result_data
             elif not result_data and result:
-                # Markdown format — try to extract from action response
                 pass
 
         # Track turn actions for end-of-turn summary
         if tool_name in ("combat_end_turn", "mp_combat_end_turn"):
             summary = self._turn_actions.copy()
             self._turn_actions.clear()
-            return _narrate_end_turn(params, result, result_data, self._last_state, summary)
+            text = _narrate_end_turn(params, result, result_data, self._last_state, summary)
+            self._last_tool = tool_name
+            self._action_count = 0
+            return text
 
         if tool_name in ("combat_play_card", "mp_combat_play_card",
                          "use_potion", "mp_use_potion"):
             action_text = _NARRATORS.get(tool_name, _narrate_generic)(
                 params, result, result_data, self._last_state)
             self._turn_actions.append(action_text)
+            self._action_count += 1
 
         handler = _NARRATORS.get(tool_name, _narrate_generic)
         text = handler(params, result, result_data, self._last_state)
+
+        # Build error correction note
+        error_note = ""
+        if self._last_error and result_data and result_data.get("status") == "error":
+            error_note = f"\n⚠️ 操作失败: {self._last_error}"
+        elif self._last_error and result_data and result_data.get("status") == "ok":
+            # Previous error was corrected
+            error_note = f"\n✅ 已修正之前的错误（{self._last_error}）"
+            self._last_error = None
+
+        if error_note and text:
+            text = text + error_note
 
         self._last_tool = tool_name
         return text
@@ -116,8 +197,12 @@ def _format_intent(intent: dict) -> str:
     if itype == "Attack":
         return f"攻击({label})" if label else "攻击"
     mapping = {
-        "Defend": "防御", "Buff": "增益", "Debuff": "减益",
+        "Defend": "防御", "Block": "防御",
+        "Buff": "增益", "Debuff": "减益",
         "Sleep": "休眠", "Unknown": "未知", "Stun": "眩晕",
+        "Escape": "逃跑", "AttackDebuff": "攻击+减益",
+        "AttackDefend": "攻击+防御", "AttackBuff": "攻击+增益",
+        "DefendBuff": "防御+增益", "Strategic": "战略",
     }
     return mapping.get(itype, itype)
 
@@ -158,6 +243,12 @@ def _total_incoming_damage(enemies: list[dict]) -> int:
     return total
 
 
+def _format_reason(params: dict) -> str:
+    """Format AI reasoning text if provided via the `reason` parameter."""
+    reason = params.get("reason")
+    return f"\n💭 {reason}" if reason else ""
+
+
 # ---------------------------------------------------------------------------
 # State narrators (get_game_state)
 # ---------------------------------------------------------------------------
@@ -166,7 +257,7 @@ def _narrate_get_state(
     params: dict, result: str, parsed: dict | None, state: dict | None
 ) -> str:
     if not parsed:
-        return "正在观察当前局势..."
+        return "🔍 让我看看现在是什么情况..."
 
     st = parsed.get("state_type", "unknown")
 
@@ -187,16 +278,16 @@ def _narrate_get_state(
     if st == "hand_select":
         return _narrate_hand_select_state(parsed)
     if st == "menu":
-        return "在主菜单，等待开始新的一局..."
+        return "🏠 在主菜单，等待开始新的一局..."
     if st == "treasure":
-        return "发现宝箱！看看里面有什么好东西。"
+        return "🎁 发现宝箱！看看里面有什么好东西。"
     if st == "card_select":
         return _narrate_card_select_state(parsed)
     if st == "relic_select":
         return _narrate_relic_select_state(parsed)
     if st == "bundle_select":
-        return "需要选择一个卡组包。"
-    return f"正在查看游戏画面 ({st})..."
+        return "📦 需要选择一个卡组包，让我仔细看看各个选项..."
+    return f"🔍 正在查看游戏画面（{_zh_node(st)}）..."
 
 
 def _narrate_combat_state(data: dict, st: str) -> str:
@@ -207,10 +298,10 @@ def _narrate_combat_state(data: dict, st: str) -> str:
     round_num = battle.get("round", "?")
 
     if turn == "enemy":
-        return "等待敌方回合结束..."
+        return "⏳ 敌方正在行动，等待中..."
 
-    label = {"monster": "普通战斗", "elite": "精英战", "boss": "BOSS战"}
-    lines = [f"[ {label.get(st, '战斗')} - 第{round_num}回合 ]"]
+    label = {"monster": "普通战斗", "elite": "⚔️ 精英战", "boss": "👑 首领战"}
+    lines = [f"[ {label.get(st, '战斗')} — 第{round_num}回合 ]"]
 
     # Player status
     hp = player.get("hp", "?")
@@ -220,7 +311,7 @@ def _narrate_combat_state(data: dict, st: str) -> str:
     block = player.get("block", 0)
     status = _hp_status(hp, max_hp) if isinstance(hp, (int, float)) and isinstance(max_hp, (int, float)) else ""
 
-    player_line = f"我方: {hp}/{max_hp} HP ({status})"
+    player_line = f"我方: {hp}/{max_hp} 生命（{status}）"
     if block:
         player_line += f" | {block}格挡"
     player_line += f" | {energy}能量 | {len(hand)}张手牌"
@@ -233,8 +324,8 @@ def _narrate_combat_state(data: dict, st: str) -> str:
         for p in powers:
             name = p.get("name", "?")
             amt = p.get("amount", "")
-            power_strs.append(f"{name}{'x'+str(amt) if amt else ''}")
-        lines.append(f"增益: {', '.join(power_strs)}")
+            power_strs.append(f"{name}×{amt}" if amt else name)
+        lines.append(f"状态效果: {', '.join(power_strs)}")
 
     # Hand cards
     if hand:
@@ -244,7 +335,7 @@ def _narrate_combat_state(data: dict, st: str) -> str:
             cost = c.get("cost", "?")
             if c.get("upgraded", False):
                 name += "+"
-            card_names.append(f"{name}({cost})")
+            card_names.append(f"{name}({cost}费)")
         lines.append(f"手牌: {', '.join(card_names)}")
 
     # Enemy status
@@ -257,7 +348,7 @@ def _narrate_combat_state(data: dict, st: str) -> str:
         eblock = e.get("block", 0)
         intents = e.get("intents", [])
 
-        enemy_line = f"敌方 [{name}]: {ehp}/{emax} HP"
+        enemy_line = f"敌方 [{name}]: {ehp}/{emax} 生命"
         if eblock:
             enemy_line += f" | {eblock}格挡"
 
@@ -268,21 +359,36 @@ def _narrate_combat_state(data: dict, st: str) -> str:
         # Enemy powers
         epowers = e.get("powers", [])
         if epowers:
-            epower_strs = [f"{p.get('name', '?')}{'x'+str(p.get('amount', '')) if p.get('amount') else ''}" for p in epowers]
+            epower_strs = [f"{p.get('name', '?')}×{p.get('amount', '')}" if p.get('amount') else p.get('name', '?') for p in epowers]
             enemy_line += f" | {', '.join(epower_strs)}"
 
         lines.append(enemy_line)
 
-    # Threat assessment
+    # Threat assessment with personality
     if total_dmg > 0:
         lines.append("")
         if block >= total_dmg:
-            lines.append(f"威胁评估: 预计受到{total_dmg}点伤害，已有{block}格挡足以抵挡")
+            lines.append(f"📊 局势分析: 敌方预计造成{total_dmg}点伤害，我方已有{block}格挡，可以安心进攻。")
         else:
             net = total_dmg - block
-            lines.append(f"威胁评估: 预计受到{total_dmg}点伤害，需要至少{net}点格挡")
             if isinstance(hp, (int, float)) and net >= hp:
-                lines.append("!! 警告: 不格挡将会死亡 !!")
+                lines.append(f"🚨 危险！敌方预计造成{total_dmg}点伤害，我方只有{block}格挡，不防御就会死！")
+            elif isinstance(hp, (int, float)) and net >= hp * 0.5:
+                lines.append(f"⚠️ 形势严峻。敌方预计造成{total_dmg}点伤害，需要额外{net}点格挡才能完全抵挡。")
+            else:
+                lines.append(f"📊 局势分析: 敌方预计造成{total_dmg}点伤害，还需要{net}点格挡来防御。")
+    elif total_dmg == 0 and enemies:
+        # Enemies not attacking
+        any_buff = any(
+            any(i.get("type") in ("Buff", "Defend") for i in e.get("intents", []))
+            for e in enemies
+        )
+        if any_buff:
+            lines.append("")
+            lines.append("📊 局势分析: 敌方本回合不会攻击，正在蓄力，这是全力输出的好机会！")
+        else:
+            lines.append("")
+            lines.append("📊 局势分析: 敌方本回合没有攻击意图，放手进攻吧。")
 
     return "\n".join(lines)
 
@@ -297,29 +403,32 @@ def _narrate_map_state(data: dict) -> str:
     max_hp = player.get("max_hp", "?")
     gold = player.get("gold", 0)
 
-    lines = [f"[ 地图 - 第{floor}层 ]"]
-    lines.append(f"状态: {hp}/{max_hp} HP | {gold}金币")
+    lines = [f"🗺️ [ 地图 — 第{floor}层 ]"]
+    lines.append(f"状态: {hp}/{max_hp} 生命 | {gold}金币")
 
     if options:
         lines.append("可选路径:")
         for opt in options:
-            ntype = opt.get("type", "???")
+            ntype = _zh_node(opt.get("type", "???"))
             leads = opt.get("leads_to", [])
-            path_str = f"  - {ntype}"
+            path_str = f"  • {ntype}"
             if leads:
-                next_types = [l.get("type", "?") for l in leads]
-                path_str += f" (通往: {', '.join(next_types)})"
+                next_types = [_zh_node(l.get("type", "?")) for l in leads]
+                path_str += f"（通往: {', '.join(next_types)}）"
             lines.append(path_str)
 
-    # Strategic hint
+    # Strategic hint with personality
     if isinstance(hp, (int, float)) and isinstance(max_hp, (int, float)):
         pct = _hp_percentage(hp, max_hp)
-        if pct < 50:
+        if pct < 30:
             lines.append("")
-            lines.append("策略提示: HP较低，优先选择篝火恢复")
+            lines.append("💀 生命值极低，必须找到篝火恢复，否则下一场战斗可能撑不住。")
+        elif pct < 50:
+            lines.append("")
+            lines.append("⚠️ 生命值偏低，优先选择篝火或商店补给，避开精英怪。")
         elif pct > 80 and any(o.get("type") in ("elite", "Elite") for o in options):
             lines.append("")
-            lines.append("策略提示: HP充足，可以考虑挑战精英获取遗物")
+            lines.append("💪 状态不错，可以考虑挑战精英怪获取遗物！")
 
     return "\n".join(lines)
 
@@ -330,9 +439,9 @@ def _narrate_event_state(data: dict) -> str:
     in_dialogue = event.get("in_dialogue", False)
 
     if in_dialogue:
-        return f"遇到事件「{name}」，正在阅读对话..."
+        return f"📜 遇到事件「{name}」，正在阅读对话..."
 
-    lines = [f"[ 事件: {name} ]"]
+    lines = [f"📜 [ 事件: {name} ]"]
     options = event.get("options", [])
     if options:
         lines.append("可选项:")
@@ -340,10 +449,10 @@ def _narrate_event_state(data: dict) -> str:
             title = o.get("title", "???")
             locked = o.get("is_locked", False)
             desc = o.get("description", "")
-            prefix = "[锁定] " if locked else ""
+            prefix = "🔒 " if locked else ""
             opt_line = f"  {prefix}[{o.get('index', '?')}] {title}"
             if desc:
-                opt_line += f" - {desc}"
+                opt_line += f" — {desc}"
             lines.append(opt_line)
     return "\n".join(lines)
 
@@ -355,22 +464,24 @@ def _narrate_rest_state(data: dict) -> str:
     hp = player.get("hp", "?")
     max_hp = player.get("max_hp", "?")
 
-    lines = [f"[ 篝火 ] HP: {hp}/{max_hp}"]
+    lines = [f"🔥 [ 篝火 ] 生命: {hp}/{max_hp}"]
     if options:
         opt_names = []
         for o in options:
             name = o.get("name", "???")
             enabled = o.get("is_enabled", True)
-            opt_names.append(f"{name}{'(不可用)' if not enabled else ''}")
+            opt_names.append(f"{name}{'（不可用）' if not enabled else ''}")
         lines.append(f"选项: {', '.join(opt_names)}")
 
-    # Strategic hint
+    # Strategic hint with personality
     if isinstance(hp, (int, float)) and isinstance(max_hp, (int, float)):
         pct = _hp_percentage(hp, max_hp)
-        if pct < 60:
-            lines.append("建议: HP较低，优先休息恢复")
+        if pct < 40:
+            lines.append("🩹 伤痕累累，必须休息恢复一下。")
+        elif pct < 60:
+            lines.append("🤔 生命值偏低，休息恢复更安全；但如果有关键牌可以升级的话...")
         else:
-            lines.append("建议: HP充足，可以考虑升级卡牌")
+            lines.append("💪 生命值充足，可以考虑升级关键卡牌来强化牌组。")
 
     return "\n".join(lines)
 
@@ -381,18 +492,18 @@ def _narrate_shop_state(data: dict) -> str:
     shop = data.get("shop", {})
     items = shop.get("items", [])
 
-    lines = [f"[ 商店 ] 金币: {gold}"]
+    lines = [f"🛒 [ 商店 ] 持有金币: {gold}"]
     if items:
         for item in items:
             name = item.get("name", "???")
             price = item.get("price", item.get("cost", "?"))
-            itype = item.get("type", "")
-            lines.append(f"  - {name} ({price}金) [{itype}]")
+            itype = _zh_item_type(item.get("type", ""))
+            lines.append(f"  • {name}（{price}金）[{itype}]")
     removal = shop.get("card_removal", {})
     if removal:
         cost = removal.get("cost", removal.get("price", "?"))
         available = removal.get("available", True)
-        lines.append(f"  - 移除卡牌 ({cost}金) {'[可用]' if available else '[不可用]'}")
+        lines.append(f"  • 移除卡牌（{cost}金）{'[可用]' if available else '[已售罄]'}")
 
     return "\n".join(lines)
 
@@ -401,12 +512,12 @@ def _narrate_rewards_state(data: dict) -> str:
     rewards = data.get("rewards", {})
     items = rewards.get("items", [])
     if not items:
-        return "查看战斗奖励..."
+        return "🏆 战斗胜利！来看看奖励吧..."
 
-    lines = ["[ 战斗奖励 ]"]
+    lines = ["🏆 [ 战斗奖励 ]"]
     for item in items:
         desc = item.get("description", item.get("type", "???"))
-        lines.append(f"  - {desc}")
+        lines.append(f"  • {desc}")
     return "\n".join(lines)
 
 
@@ -414,18 +525,18 @@ def _narrate_card_reward_state(data: dict) -> str:
     cr = data.get("card_reward", {})
     cards = cr.get("cards", [])
     if not cards:
-        return "选择卡牌奖励..."
+        return "🃏 让我看看有哪些卡牌可以选..."
 
-    lines = ["[ 卡牌奖励 ] 需要选择一张卡牌:"]
+    lines = ["🃏 [ 卡牌奖励 ] 需要选择一张卡牌:"]
     for c in cards:
         name = c.get("name", "???")
         cost = c.get("cost", "?")
-        rarity = c.get("rarity", "")
-        ctype = c.get("type", "")
+        rarity = _zh_rarity(c.get("rarity", ""))
+        ctype = _zh_ctype(c.get("type", ""))
         desc = c.get("description", "")
         upgraded = "+" if c.get("upgraded", False) else ""
 
-        card_line = f"  [{c.get('index', '?')}] {name}{upgraded} ({cost}费) [{rarity}/{ctype}]"
+        card_line = f"  [{c.get('index', '?')}] {name}{upgraded}（{cost}费）[{rarity}/{ctype}]"
         if desc:
             card_line += f"\n      {desc}"
         lines.append(card_line)
@@ -436,7 +547,7 @@ def _narrate_card_reward_state(data: dict) -> str:
 def _narrate_hand_select_state(data: dict) -> str:
     hs = data.get("hand_select", {})
     prompt = hs.get("prompt", "选择卡牌")
-    return f"需要从手牌中选择: {prompt}"
+    return f"✋ 需要从手牌中选择: {prompt}"
 
 
 def _narrate_card_select_state(data: dict) -> str:
@@ -444,12 +555,12 @@ def _narrate_card_select_state(data: dict) -> str:
     screen_type = cs.get("screen_type", "")
     cards = cs.get("cards", [])
 
-    lines = [f"[ 卡牌选择: {screen_type or '从牌组中选择'} ]"]
+    lines = [f"🃏 [ 卡牌选择: {screen_type or '从牌组中选择'} ]"]
     if cards:
         for c in cards:
             name = c.get("name", "???")
             upgraded = "+" if c.get("upgraded", False) else ""
-            lines.append(f"  - {name}{upgraded}")
+            lines.append(f"  • {name}{upgraded}")
     return "\n".join(lines)
 
 
@@ -457,13 +568,13 @@ def _narrate_relic_select_state(data: dict) -> str:
     rs = data.get("relic_select", {})
     relics = rs.get("relics", [])
     if not relics:
-        return "选择遗物..."
+        return "🏺 让我看看有哪些遗物可选..."
 
-    lines = ["[ 遗物选择 ]"]
+    lines = ["🏺 [ 遗物选择 ]"]
     for r in relics:
         name = r.get("name", "???")
         desc = r.get("description", "")
-        relic_line = f"  - {name}"
+        relic_line = f"  • {name}"
         if desc:
             relic_line += f": {desc}"
         lines.append(relic_line)
@@ -480,29 +591,36 @@ def _narrate_play_card(
     idx = params.get("card_index", "?")
     target = params.get("target")
     card = _resolve_card(idx, state) if isinstance(idx, int) else None
-    card_name = _resolve_card_name(idx, state) if isinstance(idx, int) else f"#{idx}"
+    card_name = _resolve_card_name(idx, state) if isinstance(idx, int) else f"第{idx}张"
 
-    parts = [f"出牌: {card_name}"]
+    parts = [f"🎴 出牌: {card_name}"]
 
     # Card details
     if card:
         cost = card.get("cost", "?")
-        parts[0] += f" ({cost}费)"
+        desc = card.get("description", "")
+        parts[0] += f"（{cost}费）"
+        if desc:
+            parts.append(f"  效果: {desc}")
 
     # Target info
     if target:
         enemy = _resolve_enemy(target, state)
         enemy_name = enemy.get("name", target) if enemy else target
-        parts[0] += f" -> {enemy_name}"
+        parts[0] += f" → {enemy_name}"
         if enemy:
             ehp = enemy.get("hp", "?")
             emax = enemy.get("max_hp", "?")
-            parts[0] += f" [{ehp}/{emax} HP]"
+            parts[0] += f"（{ehp}/{emax} 生命）"
 
     # Check for error in result
     if parsed and parsed.get("status") == "error":
         error = parsed.get("error", parsed.get("message", "未知错误"))
-        parts.append(f"!! 出牌失败: {error}")
+        parts.append(f"❌ 出牌失败: {error}")
+
+    reason = _format_reason(params)
+    if reason:
+        parts.append(reason)
 
     return "\n".join(parts)
 
@@ -511,7 +629,7 @@ def _narrate_end_turn(
     params: dict, result: str, parsed: dict | None, state: dict | None,
     turn_actions: list[str] | None = None,
 ) -> str:
-    lines = ["--- 回合结束 ---"]
+    lines = ["⏩ ——— 回合结束 ———"]
     if turn_actions:
         lines.append(f"本回合执行了 {len(turn_actions)} 个操作")
     return "\n".join(lines)
@@ -521,35 +639,33 @@ def _narrate_combat_batch(
     params: dict, result: str, parsed: dict | None, state: dict | None
 ) -> str:
     actions = params.get("actions", [])
-    lines = [f"[ 批量操作: {len(actions)}个动作 ]"]
+    lines = [f"⚡ [ 连续操作: {len(actions)}个动作 ]"]
+
+    # Show overall strategy if provided
+    reason = _format_reason(params)
+    if reason:
+        lines.append(reason)
 
     for i, action in enumerate(actions):
         atype = action.get("type", "?")
         if atype == "play_card":
             card_name = _resolve_card_name(action.get("card_index", "?"), state) \
-                if isinstance(action.get("card_index"), int) else f"#{action.get('card_index', '?')}"
+                if isinstance(action.get("card_index"), int) else f"第{action.get('card_index', '?')}张"
             target = action.get("target")
             line = f"  {i+1}. 出牌: {card_name}"
             if target:
-                line += f" -> {_resolve_enemy_name(target, state)}"
+                line += f" → {_resolve_enemy_name(target, state)}"
             lines.append(line)
         elif atype == "use_potion":
             name = _resolve_potion_name(action.get("slot", 0), state)
             line = f"  {i+1}. 使用药水: {name}"
             if action.get("target"):
-                line += f" -> {_resolve_enemy_name(action['target'], state)}"
+                line += f" → {_resolve_enemy_name(action['target'], state)}"
             lines.append(line)
         elif atype == "end_turn":
             lines.append(f"  {i+1}. 结束回合")
         else:
             lines.append(f"  {i+1}. {atype}")
-
-    # Parse batch result for success/failure
-    if result:
-        result_lines = result.strip().split("\n")
-        for rl in result_lines:
-            if rl.strip().startswith("[") and "]" in rl:
-                lines.append(f"  {rl.strip()}")
 
     return "\n".join(lines)
 
@@ -560,31 +676,42 @@ def _narrate_use_potion(
     slot = params.get("slot", "?")
     target = params.get("target")
     potion = _resolve_potion(slot, state) if isinstance(slot, int) else None
-    name = potion.get("name", f"#{slot}") if potion else f"#{slot}"
+    name = potion.get("name", f"第{slot}瓶") if potion else f"第{slot}瓶"
 
-    line = f"使用药水: {name}"
+    lines = [f"🧪 使用药水: {name}"]
     if target:
         enemy_name = _resolve_enemy_name(target, state)
-        line += f" -> {enemy_name}"
+        lines[0] += f" → {enemy_name}"
+
+    if potion:
+        desc = potion.get("description", "")
+        if desc:
+            lines.append(f"  效果: {desc}")
 
     if parsed and parsed.get("status") == "error":
-        line += f"\n!! 失败: {parsed.get('error', '未知错误')}"
+        lines.append(f"❌ 失败: {parsed.get('error', '未知错误')}")
 
-    return line
+    reason = _format_reason(params)
+    if reason:
+        lines.append(reason)
+
+    return "\n".join(lines)
 
 
 def _narrate_discard_potion(
     params: dict, result: str, parsed: dict | None, state: dict | None
 ) -> str:
     slot = params.get("slot", "?")
-    name = _resolve_potion_name(slot, state) if isinstance(slot, int) else f"#{slot}"
-    return f"丢弃药水: {name} (腾出药水槽位)"
+    name = _resolve_potion_name(slot, state) if isinstance(slot, int) else f"第{slot}瓶"
+    line = f"🗑️ 丢弃药水: {name}（腾出药水槽位）"
+    reason = _format_reason(params)
+    return line + reason if reason else line
 
 
 def _narrate_proceed(
     params: dict, result: str, parsed: dict | None, state: dict | None
 ) -> str:
-    return "前往地图..."
+    return "🚶 离开当前区域，前往地图..."
 
 
 def _narrate_map_choice(
@@ -593,16 +720,34 @@ def _narrate_map_choice(
     idx = params.get("node_index", params.get("index", "?"))
     if state:
         options = state.get("map", {}).get("next_options", [])
+        player = state.get("player", {})
+        hp = player.get("hp", "?")
+        max_hp = player.get("max_hp", "?")
+        run = state.get("run", {})
+        floor = run.get("floor", "?")
+
+        chosen = None
+        others = []
         for opt in options:
             if opt.get("index") == idx:
-                ntype = opt.get("type", "???")
-                leads = opt.get("leads_to", [])
-                line = f"选择路径: 前往{ntype}"
-                if leads:
-                    next_types = [l.get("type", "?") for l in leads]
-                    line += f" (下一步: {', '.join(next_types)})"
-                return line
-    return f"选择路径 #{idx}"
+                chosen = opt
+            else:
+                others.append(opt)
+
+        if chosen:
+            ntype = _zh_node(chosen.get("type", "???"))
+            leads = chosen.get("leads_to", [])
+            lines = [f"🗺️ 选择路径: 前往「{ntype}」（第{floor}层）"]
+            if leads:
+                next_types = [_zh_node(l.get("type", "?")) for l in leads]
+                lines[0] += f" → {', '.join(next_types)}"
+            lines.append(f"  当前状态: {hp}/{max_hp} 生命")
+            if others:
+                other_types = [_zh_node(o.get("type", "?")) for o in others]
+                lines.append(f"  其他路径: {', '.join(other_types)}")
+            lines.append(_format_reason(params))
+            return "\n".join(line for line in lines if line)
+    return f"🗺️ 选择第{idx}条路径" + _format_reason(params)
 
 
 def _narrate_rest_choice(
@@ -610,12 +755,28 @@ def _narrate_rest_choice(
 ) -> str:
     idx = params.get("option_index", params.get("index", "?"))
     if state:
-        options = state.get("rest_site", {}).get("options", [])
+        rest = state.get("rest_site", {})
+        player = state.get("player", {})
+        options = rest.get("options", [])
+        hp = player.get("hp", "?")
+        max_hp = player.get("max_hp", "?")
+
+        chosen_name = None
+        other_names = []
         for opt in options:
+            name = opt.get("name", "???")
             if opt.get("index") == idx:
-                name = opt.get("name", "???")
-                return f"篝火选择: {name}"
-    return "篝火选择..."
+                chosen_name = name
+            elif opt.get("is_enabled", True):
+                other_names.append(name)
+
+        if chosen_name:
+            lines = [f"🔥 篝火选择: {chosen_name}（生命: {hp}/{max_hp}）"]
+            if other_names:
+                lines.append(f"  其他选项: {', '.join(other_names)}")
+            lines.append(_format_reason(params))
+            return "\n".join(line for line in lines if line)
+    return "🔥 篝火选择..." + _format_reason(params)
 
 
 def _narrate_shop_buy(
@@ -624,13 +785,23 @@ def _narrate_shop_buy(
     idx = params.get("item_index", params.get("index", "?"))
     if state:
         items = state.get("shop", {}).get("items", [])
+        player = state.get("player", {})
+        gold = player.get("gold", "?")
+
         if isinstance(idx, int):
             for item in items:
                 if item.get("index") == idx:
                     name = item.get("name", "???")
                     price = item.get("price", item.get("cost", "?"))
-                    return f"购买: {name} ({price}金)"
-    return f"购买商品 #{idx}"
+                    itype = _zh_item_type(item.get("type", ""))
+                    desc = item.get("description", "")
+                    lines = [f"🛒 购买: {name}（{price}金）[{itype}]"]
+                    if desc:
+                        lines.append(f"  效果: {desc}")
+                    lines.append(f"  剩余金币: {gold}")
+                    lines.append(_format_reason(params))
+                    return "\n".join(line for line in lines if line)
+    return f"🛒 购买第{idx}件商品" + _format_reason(params)
 
 
 def _narrate_event_option(
@@ -638,14 +809,36 @@ def _narrate_event_option(
 ) -> str:
     idx = params.get("option_index", params.get("index", "?"))
     if state:
-        options = state.get("event", {}).get("options", [])
+        event = state.get("event", {})
+        event_name = event.get("event_name", "未知事件")
+        options = event.get("options", [])
+        chosen = None
+        others = []
         for opt in options:
             if opt.get("index") == idx:
-                title = opt.get("title", "???")
-                if opt.get("is_proceed", False):
-                    return "继续..."
-                return f"事件选择: 「{title}」"
-    return f"事件选择 #{idx}"
+                chosen = opt
+            elif not opt.get("is_locked", False) and not opt.get("is_proceed", False):
+                others.append(opt)
+
+        if chosen:
+            if chosen.get("is_proceed", False):
+                return "🚶 继续前进..."
+            title = chosen.get("title", "???")
+            desc = chosen.get("description", "")
+            lines = [f"📜 [ 事件「{event_name}」]"]
+            lines.append(f"选择: 「{title}」")
+            if desc:
+                lines.append(f"  效果: {desc}")
+            if others:
+                other_strs = []
+                for o in others:
+                    o_title = o.get("title", "?")
+                    o_desc = o.get("description", "")
+                    other_strs.append(f"「{o_title}」" + (f"（{o_desc}）" if o_desc else ""))
+                lines.append(f"  放弃选项: {'; '.join(other_strs)}")
+            lines.append(_format_reason(params))
+            return "\n".join(line for line in lines if line)
+    return f"📜 事件选择第{idx}项" + _format_reason(params)
 
 
 def _narrate_advance_dialogue(
@@ -660,17 +853,31 @@ def _narrate_claim_reward(
     idx = params.get("reward_index", params.get("index", "?"))
     if state:
         items = state.get("rewards", {}).get("items", [])
+        chosen = None
+        remaining = []
         for item in items:
             if item.get("index") == idx:
-                desc = item.get("description", item.get("type", "???"))
-                return f"领取奖励: {desc}"
-    return f"领取奖励 #{idx}"
+                chosen = item
+            else:
+                remaining.append(item)
+
+        if chosen:
+            desc = chosen.get("description", chosen.get("type", "???"))
+            lines = [f"🎁 领取奖励: {desc}"]
+            if remaining:
+                rem_names = [i.get("description", i.get("type", "?")) for i in remaining]
+                lines.append(f"  剩余奖励: {', '.join(rem_names)}")
+            lines.append(_format_reason(params))
+            return "\n".join(line for line in lines if line)
+    return f"🎁 领取第{idx}个奖励" + _format_reason(params)
 
 
 def _narrate_claim_all(
     params: dict, result: str, parsed: dict | None, state: dict | None
 ) -> str:
-    return "领取所有非卡牌奖励"
+    line = "🎁 一次性领取所有非卡牌奖励"
+    reason = _format_reason(params)
+    return line + reason if reason else line
 
 
 def _narrate_pick_card(
@@ -679,42 +886,74 @@ def _narrate_pick_card(
     idx = params.get("card_index", "?")
     if state:
         cards = state.get("card_reward", {}).get("cards", [])
+        chosen = None
+        others = []
         for card in cards:
             if card.get("index") == idx:
-                name = card.get("name", "???")
-                rarity = card.get("rarity", "")
-                cost = card.get("cost", "?")
-                desc = card.get("description", "")
-                upgraded = "+" if card.get("upgraded", False) else ""
-                line = f"选择卡牌: {name}{upgraded} ({cost}费) [{rarity}]"
-                if desc:
-                    line += f"\n  效果: {desc}"
-                return line
-    return f"选择卡牌 #{idx}"
+                chosen = card
+            else:
+                others.append(card)
+
+        if chosen:
+            name = chosen.get("name", "???")
+            rarity = _zh_rarity(chosen.get("rarity", ""))
+            cost = chosen.get("cost", "?")
+            desc = chosen.get("description", "")
+            upgraded = "+" if chosen.get("upgraded", False) else ""
+
+            lines = [f"🃏 选择卡牌: {name}{upgraded}（{cost}费）[{rarity}]"]
+            if desc:
+                lines.append(f"  效果: {desc}")
+            if others:
+                other_strs = []
+                for o in others:
+                    oname = o.get("name", "?")
+                    ocost = o.get("cost", "?")
+                    if o.get("upgraded", False):
+                        oname += "+"
+                    other_strs.append(f"{oname}（{ocost}费）")
+                lines.append(f"  放弃选项: {', '.join(other_strs)}")
+            lines.append(_format_reason(params))
+            return "\n".join(line for line in lines if line)
+    return f"🃏 选择第{idx}张卡牌" + _format_reason(params)
 
 
 def _narrate_skip_card(
     params: dict, result: str, parsed: dict | None, state: dict | None
 ) -> str:
-    return "跳过卡牌奖励，保持牌组精简"
+    if state:
+        cards = state.get("card_reward", {}).get("cards", [])
+        if cards:
+            names = []
+            for c in cards:
+                name = c.get("name", "?")
+                cost = c.get("cost", "?")
+                if c.get("upgraded", False):
+                    name += "+"
+                names.append(f"{name}（{cost}费）")
+            lines = ["🚫 跳过卡牌奖励"]
+            lines.append(f"  可选卡牌: {', '.join(names)}")
+            lines.append(_format_reason(params))
+            return "\n".join(line for line in lines if line)
+    return "🚫 跳过卡牌奖励" + _format_reason(params)
 
 
 def _narrate_select_card(
     params: dict, result: str, parsed: dict | None, state: dict | None
 ) -> str:
-    return "选择卡牌..."
+    return "🃏 正在选择卡牌..."
 
 
 def _narrate_confirm(
     params: dict, result: str, parsed: dict | None, state: dict | None
 ) -> str:
-    return "确认选择"
+    return "✅ 确认选择"
 
 
 def _narrate_cancel(
     params: dict, result: str, parsed: dict | None, state: dict | None
 ) -> str:
-    return "取消选择"
+    return "↩️ 取消选择"
 
 
 def _narrate_relic_select(
@@ -723,46 +962,82 @@ def _narrate_relic_select(
     idx = params.get("relic_index", params.get("index", "?"))
     if state:
         relics = state.get("relic_select", {}).get("relics", [])
-        if isinstance(idx, int) and 0 <= idx < len(relics):
-            name = relics[idx].get("name", "???")
-            desc = relics[idx].get("description", "")
-            line = f"选择遗物: {name}"
+        chosen = None
+        others = []
+        if isinstance(idx, int):
+            for i, r in enumerate(relics):
+                if i == idx:
+                    chosen = r
+                else:
+                    others.append(r)
+
+        if chosen:
+            name = chosen.get("name", "???")
+            desc = chosen.get("description", "")
+            lines = [f"🏺 选择遗物: {name}"]
             if desc:
-                line += f"\n  效果: {desc}"
-            return line
-    return f"选择遗物 #{idx}"
+                lines.append(f"  效果: {desc}")
+            if others:
+                other_strs = [o.get("name", "?") for o in others]
+                lines.append(f"  放弃选项: {', '.join(other_strs)}")
+            lines.append(_format_reason(params))
+            return "\n".join(line for line in lines if line)
+    return f"🏺 选择第{idx}个遗物" + _format_reason(params)
 
 
 def _narrate_relic_skip(
     params: dict, result: str, parsed: dict | None, state: dict | None
 ) -> str:
-    return "跳过遗物选择"
+    if state:
+        relics = state.get("relic_select", {}).get("relics", [])
+        if relics:
+            names = [r.get("name", "?") for r in relics]
+            lines = ["🚫 跳过遗物选择"]
+            lines.append(f"  可选遗物: {', '.join(names)}")
+            lines.append(_format_reason(params))
+            return "\n".join(line for line in lines if line)
+    return "🚫 跳过遗物选择" + _format_reason(params)
 
 
 def _narrate_treasure(
     params: dict, result: str, parsed: dict | None, state: dict | None
 ) -> str:
-    return "从宝箱中获取遗物"
+    idx = params.get("relic_index", params.get("index", "?"))
+    if state:
+        relics = state.get("treasure", {}).get("relics", [])
+        if isinstance(idx, int) and 0 <= idx < len(relics):
+            name = relics[idx].get("name", "???")
+            desc = relics[idx].get("description", "")
+            lines = [f"🎁 从宝箱获取遗物: {name}"]
+            if desc:
+                lines.append(f"  效果: {desc}")
+            lines.append(_format_reason(params))
+            return "\n".join(line for line in lines if line)
+    line = "🎁 从宝箱中获取遗物"
+    reason = _format_reason(params)
+    return line + reason if reason else line
 
 
 def _narrate_crystal_sphere(
     params: dict, result: str, parsed: dict | None, state: dict | None
 ) -> str:
-    return "操作水晶球小游戏..."
+    return "🔮 操作水晶球小游戏..."
 
 
 def _narrate_combat_select_card(
     params: dict, result: str, parsed: dict | None, state: dict | None
 ) -> str:
     idx = params.get("card_index", "?")
-    card_name = _resolve_card_name(idx, state) if isinstance(idx, int) else f"#{idx}"
-    return f"选中: {card_name}"
+    card_name = _resolve_card_name(idx, state) if isinstance(idx, int) else f"第{idx}张"
+    line = f"✋ 选中: {card_name}"
+    reason = _format_reason(params)
+    return line + reason if reason else line
 
 
 def _narrate_generic(
     params: dict, result: str, parsed: dict | None, state: dict | None
 ) -> str:
-    return "思考中..."
+    return "🤔 思考中..."
 
 
 # ---------------------------------------------------------------------------
@@ -779,7 +1054,7 @@ _NARRATORS: dict[str, Any] = {
     "combat_batch": _narrate_combat_batch,
     "combat_end_turn": _narrate_end_turn,
     "mp_combat_end_turn": _narrate_end_turn,
-    "mp_combat_undo_end_turn": lambda *a: "撤回结束回合投票",
+    "mp_combat_undo_end_turn": lambda *a: "↩️ 撤回结束回合投票",
     "combat_select_card": _narrate_combat_select_card,
     "mp_combat_select_card": _narrate_combat_select_card,
     "combat_confirm_selection": _narrate_confirm,
@@ -822,12 +1097,12 @@ _NARRATORS: dict[str, Any] = {
     "deck_cancel_selection": _narrate_cancel,
     "mp_deck_cancel_selection": _narrate_cancel,
     # Bundle
-    "bundle_select": lambda *a: "查看卡组包...",
-    "mp_bundle_select": lambda *a: "查看卡组包...",
-    "bundle_confirm_selection": lambda *a: "选择此卡组包！",
-    "mp_bundle_confirm_selection": lambda *a: "选择此卡组包！",
-    "bundle_cancel_selection": lambda *a: "查看其他卡组包...",
-    "mp_bundle_cancel_selection": lambda *a: "查看其他卡组包...",
+    "bundle_select": lambda *a: "📦 查看卡组包...",
+    "mp_bundle_select": lambda *a: "📦 查看卡组包...",
+    "bundle_confirm_selection": lambda *a: "📦 选择此卡组包！",
+    "mp_bundle_confirm_selection": lambda *a: "📦 选择此卡组包！",
+    "bundle_cancel_selection": lambda *a: "📦 再看看其他卡组包...",
+    "mp_bundle_cancel_selection": lambda *a: "📦 再看看其他卡组包...",
     # Relic selection
     "relic_select": _narrate_relic_select,
     "mp_relic_select": _narrate_relic_select,
@@ -841,6 +1116,6 @@ _NARRATORS: dict[str, Any] = {
     "mp_crystal_sphere_set_tool": _narrate_crystal_sphere,
     "crystal_sphere_click_cell": _narrate_crystal_sphere,
     "mp_crystal_sphere_click_cell": _narrate_crystal_sphere,
-    "crystal_sphere_proceed": lambda *a: "水晶球完成",
-    "mp_crystal_sphere_proceed": lambda *a: "水晶球完成",
+    "crystal_sphere_proceed": lambda *a: "🔮 水晶球占卜完成",
+    "mp_crystal_sphere_proceed": lambda *a: "🔮 水晶球占卜完成",
 }
