@@ -79,3 +79,39 @@ Vantom's 滑溜 (9 layers) absorbed all early damage — each hit only dealt 1 d
 - **Entered elite at 63 HP** — should have been 80% HP (64+) for elites
 - **Used 镣铐药水 on elite instead of saving for boss** — but had no choice
 - **Batch combat actions unreliable** — index shifting caused wrong cards to play multiple times
+
+## Run #3
+
+- **Date:** 2026-04-08
+- **Character:** 铁甲战士 (Ironclad)
+- **Result:** ❌ Defeated at Act 1, Floor 7 (Normal Monster)
+- **Ascension:** 0
+- **Monster:** 3× 墨宝 (Inklet) — 11-17 HP each, Slippery mechanic
+
+### Deck (13 cards)
+- 打击 ×3, 防御 ×4, 痛击 (2), 放血 (0), 焚烧 (1), 燃烧契约 (1), 双重打击 (1), 武装 (1)
+
+### Relics
+- 燃烧之血, 松动羊毛剪
+
+### Potions
+- 爆炸安瓿 (used on Inklet fight Round 4 — wasted, too late)
+
+### Death Cause
+Entered Inklet fight at 16/80 HP (20%). Three Inklets deal 12-15 damage/turn combined. Each has Slippery (first hit only deals 1 damage), making AoE inefficient for clearing. Despite killing INKLET_2's Slippery with 双重打击, could not kill fast enough or block enough to survive. Died Round 2-3 from accumulated damage.
+
+Root causes: (1) 松动羊毛剪 cost 13 HP at game start; (2) 毛绒伏地虫 fight lasted 5 rounds, enemy gained 7 Strength; (3) No healing between fights.
+
+### Key Moments
+1. **Neow:** Got 松动羊毛剪 (remove 2 cards, take 13 damage). Removed Strikes but HP cost was devastating.
+2. **Floor 5 (Fuzzy Wurm):** Enemy gained 7 Strength during buff turns. Fight lasted too long. Ended at 16 HP.
+3. **Floor 6 (Cheese Event):** Took 双重打击 + 武装 (free cards, good choices). Could not take天选芝士 (14 HP cost would kill).
+4. **Floor 7 (Inklets):** 3 Inklets with Slippery. AoE焚烧 did minimal damage (1 per enemy from Slippery). 双重打击 was correct answer (strips Slippery + deals damage). Died to sustained multi-enemy pressure.
+
+### Decision Audit
+- ✅ 正确: 燃烧契约 pick — exhaust source exactly what was needed
+- ✅ 正确: 双重打击 + 武装 from Cheese event — multi-hit and efficient block/upgrade
+- ✅ 正确: Exhausting 放血 via 燃烧契约 at low HP — removed dangerous card
+- ❌ 错误: 松动羊毛剪 relic choice — 13 HP cost too steep, left run crippled from start
+- ❌ 错误: Fuzzy Wurm fight strategy — should have used potion earlier or blocked more aggressively
+- ❌ 错误: Used 爆炸安瓿 too late in Inklet fight — should have saved for a fight where it could matter
