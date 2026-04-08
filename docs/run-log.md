@@ -253,3 +253,47 @@ Root causes:
 - **Constrict DOT ignored** — should have killed Strangler ASAP instead of clearing small slimes first
 - **No energy generation** — 3 energy cap limited per-turn output
 - **Too many basic cards** — 4 Strikes + 4 Defends still in deck at Floor 15
+
+## Run #7
+
+- **Date:** 2026-04-08
+- **Character:** 铁甲战士 (Ironclad)
+- **Result:** ❌ Defeated at Act 1 Floor 7
+- **Ascension:** 0
+- **Killed by:** 藤蔓蹒跚者 (Vine Shambler) — 61HP, 缠结(攻击牌+1费) + 高伤
+
+### Deck (12 cards)
+- 打击 ×4, 防御 ×4, 痛击+ (2→13伤+3易伤), 燃烧+ (1→+3力量), 坚毅 (1→7挡+消耗), 武装 (1→5挡+升级)
+
+### Relics
+- 燃烧之血, 轰鸣海螺
+
+### Potions (used)
+- 明晰提取物 (used T6 vs Vine Shambler, drew Defend to survive 1 more turn)
+
+### Death Cause
+Vine Shambler's 缠结 debuff (+1 attack card cost) completely crippled offense. With attacks costing 2 energy, could only play 1 attack + 1 defend per turn (or 3 defends with 0 offense). Combined with alternating 6×2 and 16 damage attacks, HP spiraled from 48→12→4→0 over 3 rounds of 缠结. 15 block vs 16 damage = 1 HP short of survival.
+
+Root causes:
+1. **No耸肩无视** — only basic Defends (5 block each), needed 耸肩无视 for 8+ block/card
+2. **燃烧+ costs a setup turn** — 1 energy spent on Power = less block/attack round 1
+3. **Too many basic cards** — 4 Strikes + 4 Defends = low card quality despite small deck
+4. **No energy generation** — 3 energy cap + 缠结 = paralyzed
+
+### Key Moments
+1. **涅奥 event (Floor 1):** Chose 轰鸣海螺 (精英战+2抽). Good for elites but never reached one.
+2. **Shop (Floor 3):** Bought 坚毅(25g sale) + removed Strike. Good value.
+3. **Event (Floor 4):** Upgraded 燃烧→燃烧+(3 Str). Excellent choice.
+4. **Fuzzy Wurm (Floor 5):** 燃烧+ first real test — 3 Str made Strikes 9 damage. Clean win.
+5. **Vine Shambler (Floor 7):** 缠结 debuff devastated. Lost 26 HP in 2 rounds of entangle.
+
+### What Went Right
+- 燃烧+ (3 Str) early upgrade — strongest power card in Act 1
+- Disciplined potion saving — used 明晰提取物 at critical moment
+- Card removal + 坚毅 at discounted price
+
+### What Went Wrong
+- **Skipped 耸肩无视 at shop** — chose 坚毅 over 耸肩无视 (different shop, but耸肩 wasn't available)
+- **No answer to 缠结** — need 0-cost attacks or skills that deal damage
+- **HP spiraled** — 48→38→26→18→12→4→0 across 3 fights with only Burning Blood for recovery
+- **Should have taken 放血 at shop** — 0 cost skill for +2 energy would bypass 缠结
