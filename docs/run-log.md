@@ -162,3 +162,49 @@ Root causes: (1) Slime fight (Floor 6) drained HP from 55→20 due to status car
 - **combat_batch index shifting** — Shrug It Off draws change indices mid-batch, causing wrong cards to play. Critical technical issue.
 - **Entered elite at 38% HP** — far below 70% threshold. Only path available, but the run was already doomed.
 - **Mawler fight (16 rounds)** — too slow. Should have used Bash more aggressively early to apply Vulnerable and speed up kills.
+
+## Run #5
+
+- **Date:** 2026-04-08
+- **Character:** 铁甲战士 (Ironclad)
+- **Result:** ❌ Defeated at Act 1 Floor 12
+- **Ascension:** 0
+- **Killed by:** 4x Slime group (树枝/树叶史莱姆)
+
+### Deck (15 cards)
+- 打击 ×4, 防御 ×4, 痛击 (2, 锋利+2), 战栗 (1), 惊逃+ (1), 耸肩无视 ×2 (1), 主宰 (1, 消耗), 藏宝图 (0, 不可打出)
+
+### Relics
+- 燃烧之血, 小型扭蛋, 冻结之蛋, 赌博筹码
+
+### Potions (unused)
+- 速度药水
+
+### Death Cause
+HP spiraled from 80 → 14 across floors 4-11 without adequate recovery. Final combat: 4 slimes dealing 23 total damage on round 2. Drew all attacks (3x Strike + Bash + Dominate) with zero block cards. 14 HP vs 23 incoming = instant death.
+
+Root causes:
+1. **Slime status flood** — 3 黏液 cards added to deck in round 1 diluted draw quality
+2. **藏宝图 dead card** — unplayable card occupied hand/draw slots throughout combat
+3. **No AOE** — 4-enemy fight with only single-target cards took too long
+4. **HP management failure** — spent too much HP in Nibbit fight (floor 8, lost 60 HP) and Flyconid fight (floor 11)
+
+### Key Moments
+1. **涅奥 event (Floor 1):** Chose 小型扭蛋 → got 冻结之蛋. Great start with 2 relics.
+2. **Shop (Floor 5):** Bought 耸肩无视 + removed Strike. Good purchases.
+3. **Nibbit fight (Floor 8):** Lost 60 HP fighting 2 Nibbits. Used 缚魂药水 on regular monsters. Used 主宰 to gain 2 permanent Strength — but HP cost was too high.
+4. **Flyconid fight (Floor 11):** Survived at 8 HP by chaining 惊逃+ auto-attacks. Brilliant save but HP never recovered.
+5. **Final Slime fight (Floor 12):** 赌博筹码 swapped 藏宝图 but drew no block cards round 2. GG.
+
+### What Went Right
+- 冻结之蛋 from 小型扭蛋 → excellent relic synergy
+- 主宰 + 易伤 combo for permanent Strength gain
+- 惊逃+ saved multiple lethal situations with auto-attacks
+- 赌博筹码 from treasure chest — strong relic
+
+### What Went Wrong
+- **缚魂药水 wasted on regular Nibbits** — should have saved for elite/boss
+- **藏宝图 polluted deck** — unplayable card diluted draws in every combat
+- **No AOE acquired** — skipped 突破 and other AOE options
+- **Entered floor 12 at 14 HP** — below survival threshold for any combat
+- **Campfire should have been Smith** — at floor 7 with 59 HP, resting was correct but we never got back above 50% anyway
