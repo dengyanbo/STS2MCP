@@ -9,6 +9,9 @@ __pycache__/
 *.pyo
 .venv/
 
+# Game logs (detailed per-run JSONL + combat logs)
+logs/
+
 # Claude Code
 # .claude/
 .mcp.json

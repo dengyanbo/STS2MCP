@@ -26,19 +26,20 @@ Singleplayer and multiplayer (co-op) supported. Tested against STS2 `v0.99.1`.
 │  MCP Server (mcp/)                                       │
 │  Bridges HTTP API → 70+ MCP tools                        │
 │  Python 3.11+ · FastMCP · httpx                          │
-└────────┬───────────────────────────────────┬────────────┘
-         │ stdio (MCP protocol)              │ HTTP POST
-┌────────▼────────────┐        ┌─────────────▼────────────┐
-│  AI Agent            │        │  Displayer (displayer/)   │
-│  (Claude, GPT, etc.) │        │  Live narration dashboard │
-└─────────────────────┘        │  localhost:15580           │
-                                └──────────────────────────┘
+└────────┬───────────────────┬──────────────┬─────────────┘
+         │ stdio (MCP)       │ HTTP POST    │ file I/O
+┌────────▼────────────┐  ┌───▼─────────────┐ ┌──▼──────────────┐
+│  AI Agent            │  │  Displayer      │ │  Game Logger    │
+│  (Claude, GPT, etc.) │  │  localhost:15580│ │  logs/run_*/    │
+└─────────────────────┘  └─────────────────┘ │  JSONL + MD     │
+                                              └─────────────────┘
 ```
 
 | Component | Path | Description |
 |---|---|---|
 | **C# Mod** | `McpMod.*.cs` | In-game HTTP API server (v0.3.3, .NET 9) |
 | **MCP Server** | [`mcp/`](mcp/) | Bridges HTTP API to MCP tools for AI agents |
+| **Game Logger** | [`mcp/game_logger.py`](mcp/game_logger.py) | Per-run detailed logging (JSONL + combat logs) |
 | **Displayer** | [`displayer/`](displayer/) | Browser dashboard showing live AI narration |
 | **Docs** | `docs/` | API reference (`raw-full.md`) and quick reference (`raw-simplified.md`) |
 | **AI Skills** | `.github/instructions/` | Auto-loaded gameplay strategy for Copilot agents |
@@ -85,6 +86,8 @@ Add to your MCP config (`.mcp.json` for Claude Code, `claude_desktop_config.json
 | `--no-trust-env` | Ignore proxy env vars (useful in containers) |
 | `--displayer-url URL` | Displayer server URL (default: `http://localhost:15580`) |
 | `--no-displayer` | Disable displayer integration |
+| `--log-dir DIR` | Game log directory (default: `<project>/logs`) |
+| `--no-logging` | Disable detailed game logging |
 
 </details>
 
@@ -98,6 +101,18 @@ uv run python displayer/server.py
 ```
 
 The MCP server automatically sends events to the displayer — no extra config needed.
+
+### 4. Game Logs (Auto-enabled)
+
+Every run is automatically logged to `logs/run_<timestamp>/` with:
+
+| File | Content |
+|---|---|
+| `events.jsonl` | Every tool call as one JSON line — params, result, game state snapshot |
+| `combat_log.md` | Turn-by-turn combat breakdown — hand, enemies, intents, actions taken |
+| `summary.md` | Run stats — combats, cards played, damage taken, potions used, etc. |
+
+Use these for post-game analysis, cross-run learning, or debugging AI decisions. Disable with `--no-logging`.
 
 ## For Developers
 
@@ -133,8 +148,10 @@ McpMod.Formatting.cs         # Markdown formatter + combat analysis
 McpMod.Helpers.cs            # Shared utilities
 McpMod.SettingsUI.cs         # In-game settings UI
 mcp/server.py                # MCP server (70+ tools)
+mcp/game_logger.py           # Per-run detailed logging (JSONL + combat logs)
 displayer/                   # Live narration dashboard
 docs/                        # API reference
+logs/                        # Auto-generated game logs (gitignored)
 .github/instructions/        # AI gameplay strategy files
 ```
 

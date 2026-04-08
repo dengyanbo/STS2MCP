@@ -20,6 +20,8 @@ from urllib.parse import urlparse
 import httpx
 from mcp.server.fastmcp import FastMCP
 
+from game_logger import GameLogger
+
 # Suppress noisy httpx request logging
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
@@ -30,6 +32,9 @@ _base_url: str = "http://localhost:15526"
 _trust_env: bool = True
 _displayer_url: str = "http://localhost:15580"
 _displayer_enabled: bool = True
+
+# Game logger — initialized in main() with the correct log directory
+_game_logger: GameLogger | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -50,8 +55,12 @@ async def _notify_displayer(tool_name: str, params: dict, result: str) -> None:
         pass  # Displayer is optional — never block gameplay
 
 
-# Wrap mcp.tool so every registered tool auto-notifies the displayer.
+# Wrap mcp.tool so every registered tool auto-notifies the displayer
+# and logs to the game logger.
 _orig_mcp_tool = mcp.tool
+
+# Tools that don't change game state — skip the extra JSON state fetch
+_LOGGER_READ_ONLY = frozenset({"narrate", "get_game_state", "mp_get_game_state"})
 
 
 def _instrumented_tool(*deco_args, **deco_kwargs):
@@ -61,9 +70,31 @@ def _instrumented_tool(*deco_args, **deco_kwargs):
         @functools.wraps(func)
         async def instrumented(**kwargs):
             result = await func(**kwargs)
+
+            # Displayer notification (fire-and-forget)
             asyncio.create_task(
                 _notify_displayer(func.__name__, dict(kwargs), result)
             )
+
+            # Game logger — fetch JSON state for context
+            if _game_logger is not None:
+                state_json = None
+                tool_name = func.__name__
+                try:
+                    if tool_name == "get_game_state" and kwargs.get("format") == "json":
+                        state_json = json.loads(result)
+                    elif tool_name not in _LOGGER_READ_ONLY:
+                        raw = await _get({"format": "json"})
+                        state_json = json.loads(raw)
+                except Exception:
+                    pass
+                try:
+                    _game_logger.log_tool_call(
+                        tool_name, dict(kwargs), result, state_json
+                    )
+                except Exception:
+                    pass  # Logger must never break gameplay
+
             return result
 
         return orig_decorator(instrumented)
@@ -1253,9 +1284,13 @@ def main():
                         help="Displayer dashboard URL")
     parser.add_argument("--no-displayer", action="store_true",
                         help="Disable displayer notifications and auto-launch")
+    parser.add_argument("--log-dir", type=str, default=None,
+                        help="Directory for detailed game logs (default: <project>/logs)")
+    parser.add_argument("--no-logging", action="store_true",
+                        help="Disable detailed game logging")
     args = parser.parse_args()
 
-    global _base_url, _trust_env, _displayer_url, _displayer_enabled
+    global _base_url, _trust_env, _displayer_url, _displayer_enabled, _game_logger
     _base_url = f"http://{args.host}:{args.port}"
     _trust_env = not args.no_trust_env
     _displayer_url = args.displayer_url
@@ -1263,6 +1298,15 @@ def main():
 
     if _displayer_enabled:
         _start_displayer(_displayer_url)
+
+    # Initialize game logger
+    if not args.no_logging:
+        log_dir = Path(args.log_dir) if args.log_dir else (
+            Path(__file__).resolve().parent.parent / "logs"
+        )
+        _game_logger = GameLogger(log_dir)
+        atexit.register(_game_logger.force_end_run, "server_shutdown")
+        print(f"[sts2-mcp] Game logging enabled → {log_dir}", file=sys.stderr)
 
     mcp.run(transport="stdio")
 
