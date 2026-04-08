@@ -264,24 +264,49 @@ def _handle_error(e: Exception) -> str:
 
 @mcp.tool()
 async def narrate(text: str) -> str:
-    """Send your strategic thinking and analysis to the live narration dashboard.
+    """Send your complete Chain-of-Thought analysis to the live thinking panel.
 
-    Call this BEFORE every significant decision to share your thought process
-    with viewers. Write in natural Chinese, as if explaining your reasoning
-    to an audience watching your gameplay.
+    Call this BEFORE every significant decision. This is your PRIMARY channel
+    for sharing detailed reasoning with viewers. The text appears in a
+    dedicated thinking sidebar — not the action feed — so be thorough.
 
-    Include: situation analysis, what options you see, why you're choosing
-    one over the others, any mistakes you just noticed, etc.
+    Write in natural Chinese with the following structure:
+
+    📍 局势总结 — What is the current situation? Key numbers (HP, energy,
+       enemy HP/intent, gold, floor, deck size, etc.)
+    🔍 选项列举 — What are ALL available options? List them explicitly.
+    ⚖️ 逐项评估 — For EACH option, analyze pros/cons with numerical
+       reasoning. E.g. "痛击: 1费→8伤+3易伤, 下回合所有攻击×1.5"
+    ✅ 最终决策 — Which option wins and WHY? Summarize the key factor.
+    ⚠️ 风险与备选 — What could go wrong? What's plan B?
+
+    Not every section is needed every time — adapt to context:
+    - Combat turns: focus on damage calc, kill math, energy plan
+    - Map choices: focus on HP thresholds, path lookahead, economy
+    - Card rewards: focus on deck synergy, archetype fit, what's missing
+    - Events: focus on risk/reward tradeoff with numbers
 
     Args:
-        text: Your analysis in natural Chinese. 2-5 sentences typical.
+        text: Your full analysis in natural Chinese. Use newlines to
+              separate sections. Aim for 5-15 sentences for important
+              decisions (combat turns, boss fights, card picks).
+              Shorter (3-5 sentences) for simpler choices.
 
-    Example texts:
-        "战斗开始！小啃兽 43HP，意图攻击12。手牌有防御和痛击，3能量。
-         先痛击施加易伤，再防御减伤，下回合利用易伤打更高伤害。"
+    Example (combat turn):
+        "📍 回合2，3能量。小啃兽 28/43HP，意图攻击12。手牌：痛击(1)、防御(1)、防御(1)、打击(1)、燃烧(1)。无格挡。\\n"
+        "🔍 方案A: 痛击→防御→防御 = 8伤+3易伤+10挡，净受伤2\\n"
+        "方案B: 燃烧→痛击→防御 = 3力量+8伤+5挡，净受伤7但后续回合伤害大增\\n"
+        "⚖️ 方案B虽然本回合多受5伤(82→75HP)，但燃烧是能力牌，越早打收益越高。3力量让后续每次攻击+3伤害。\\n"
+        "✅ 选方案B！燃烧第一个打，再痛击(易伤放大后续)，最后防御减伤。\\n"
+        "⚠️ 如果下回合敌人继续攻击且手牌差，75HP仍有余量承受。"
 
-        "地图分析：3条路线。路线0有精英和篝火，路线1全是普通怪。
-         HP 85%很健康，走精英路线拿遗物加速成长！"
+    Example (map choice):
+        "📍 第6层，HP 71/80(89%)，金币87，0药水。前方4条路线。\\n"
+        "🔍 路线0: 怪→怪→精英→篝火→怪 | 路线1: 怪→未知→怪→商店→怪 | 路线2: 怪→怪→怪→篝火→怪 | 路线3: 怪→篝火→怪→怪→怪\\n"
+        "⚖️ 路线0有精英，HP 89%完全可以打。精英掉遗物是全局加速关键。精英后有篝火可以恢复或升级。\\n"
+        "路线1有商店但只有87金，不够移除+买卡(75+50=125)。\\n"
+        "✅ 走路线0！精英+篝火是最佳组合。\\n"
+        "⚠️ 如果精英前怪战损血严重(HP<50%)，精英后篝火必须休息不能升级。"
     """
     # This tool doesn't call the game — it only sends text to the displayer.
     # The _instrumented_tool wrapper handles the displayer notification.
@@ -458,7 +483,7 @@ async def combat_batch(actions: list[dict], reason: str | None = None) -> str:
             - target: (play_card/use_potion) entity_id if needed
             - slot: (use_potion) potion slot index
 
-        - reason: (combat_batch) Overall turn strategy explanation (shown on viewer dashboard)
+        - reason: (Required) Your turn strategy: what you plan to do this turn, key calculations (damage/block math), and why. 2-3 sentences. Example: "痛击施加易伤后，打击伤害从6→9。剩1能量防御减少5点伤害，净受伤7点可接受。"
 
     Example: [
         {"type": "use_potion", "slot": 0},
@@ -646,7 +671,7 @@ async def rewards_claim(reward_index: int, reason: str | None = None) -> str:
 
     Args:
         reward_index: 0-based index of the reward on the rewards screen.
-        reason: Brief explanation of why you're claiming this reward (shown on viewer dashboard).
+        reason: Why you're claiming this specific reward and its value to your run. 1-2 sentences.
 
     Note that claiming a reward may change the indices of remaining rewards, so refer to the latest game state for accurate indices.
     Claiming from right to left can help maintain more stable indices for remaining rewards, as rewards will always shift left to fill in gaps.
@@ -663,7 +688,7 @@ async def rewards_pick_card(card_index: int, reason: str | None = None) -> str:
 
     Args:
         card_index: 0-based index of the card to add to the deck.
-        reason: Brief explanation of why you chose this card (shown on viewer dashboard).
+        reason: Why this card over the alternatives — deck synergy, what problem it solves, and what you skipped. 2-3 sentences.
     """
     try:
         return await _post({"action": "select_card_reward", "card_index": card_index})
@@ -676,7 +701,7 @@ async def rewards_skip_card(reason: str | None = None) -> str:
     """[Rewards] Skip the card reward without selecting a card.
 
     Args:
-        reason: Brief explanation of why you're skipping (shown on viewer dashboard).
+        reason: Why none of the offered cards fit — deck size, archetype mismatch, etc. 1-2 sentences.
     """
     try:
         return await _post({"action": "skip_card_reward"})
@@ -757,7 +782,7 @@ async def map_choose_node(node_index: int, reason: str | None = None) -> str:
 
     Args:
         node_index: 0-based index of the node from the next_options list.
-        reason: Brief explanation of why you chose this path (shown on viewer dashboard).
+        reason: Path analysis: why this route over alternatives, HP/economy considerations, and what you expect ahead. 2-3 sentences.
     """
     global _action_game_state
     try:
@@ -794,7 +819,7 @@ async def rest_choose_option(option_index: int, reason: str | None = None) -> st
 
     Args:
         option_index: 0-based index of the option from the rest site state.
-        reason: Brief explanation of your choice (shown on viewer dashboard).
+        reason: Why rest vs smith vs other options — HP status, upgrade targets, upcoming path considerations. 1-2 sentences.
     """
     try:
         return await _post({"action": "choose_rest_option", "index": option_index})
@@ -816,7 +841,7 @@ async def shop_purchase(item_index: int, reason: str | None = None) -> str:
 
     Args:
         item_index: 0-based index of the item from the shop state.
-        reason: Brief explanation of why you're buying this (shown on viewer dashboard).
+        reason: Why this purchase — value assessment, deck/build synergy, and gold budget. 1-2 sentences.
     """
     try:
         return await _post({"action": "shop_purchase", "index": item_index})
@@ -838,7 +863,7 @@ async def event_choose_option(option_index: int, reason: str | None = None) -> s
 
     Args:
         option_index: 0-based index of the unlocked option.
-        reason: Brief explanation of why you chose this option (shown on viewer dashboard).
+        reason: Risk/reward analysis of the chosen option vs alternatives. What you gain, what you risk. 1-2 sentences.
     """
     try:
         return await _post({"action": "choose_event_option", "index": option_index})
@@ -958,7 +983,7 @@ async def relic_select(relic_index: int, reason: str | None = None) -> str:
 
     Args:
         relic_index: 0-based index of the relic (as shown in game state).
-        reason: Brief explanation of why you chose this relic (shown on viewer dashboard).
+        reason: Why this relic over the others — build synergy, immediate value, and what you passed on. 2-3 sentences.
     """
     try:
         return await _post({"action": "select_relic", "index": relic_index})
@@ -989,7 +1014,7 @@ async def treasure_claim_relic(relic_index: int, reason: str | None = None) -> s
 
     Args:
         relic_index: 0-based index of the relic (as shown in game state).
-        reason: Brief explanation (shown on viewer dashboard).
+        reason: Relic value assessment for your current build. 1 sentence.
     """
     try:
         return await _post({"action": "claim_treasure_relic", "index": relic_index})
