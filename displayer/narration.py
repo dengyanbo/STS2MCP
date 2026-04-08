@@ -1040,11 +1040,20 @@ def _narrate_generic(
     return "🤔 思考中..."
 
 
+def _narrate_ai_narration(
+    params: dict, result: str, parsed: dict | None, state: dict | None
+) -> str:
+    """Pass through the AI's own narration text directly."""
+    return params.get("text", "...")
+
+
 # ---------------------------------------------------------------------------
 # Tool name -> handler map
 # ---------------------------------------------------------------------------
 
 _NARRATORS: dict[str, Any] = {
+    # AI narration (pass-through)
+    "narrate": _narrate_ai_narration,
     # State queries
     "get_game_state": _narrate_get_state,
     "mp_get_game_state": _narrate_get_state,

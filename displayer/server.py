@@ -53,7 +53,9 @@ async def handle_post_event(request: web.Request) -> web.Response:
         return web.json_response({"status": "ok", "suppressed": True})
 
     event_type = "thinking"
-    if any(tool_name.startswith(p) for p in (
+    if tool_name == "narrate":
+        event_type = "narration"
+    elif any(tool_name.startswith(p) for p in (
         "combat_play", "mp_combat_play", "combat_batch",
         "use_potion", "mp_use_potion",
     )):

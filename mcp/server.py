@@ -216,6 +216,32 @@ def _handle_error(e: Exception) -> str:
 
 
 @mcp.tool()
+async def narrate(text: str) -> str:
+    """Send your strategic thinking and analysis to the live narration dashboard.
+
+    Call this BEFORE every significant decision to share your thought process
+    with viewers. Write in natural Chinese, as if explaining your reasoning
+    to an audience watching your gameplay.
+
+    Include: situation analysis, what options you see, why you're choosing
+    one over the others, any mistakes you just noticed, etc.
+
+    Args:
+        text: Your analysis in natural Chinese. 2-5 sentences typical.
+
+    Example texts:
+        "战斗开始！小啃兽 43HP，意图攻击12。手牌有防御和痛击，3能量。
+         先痛击施加易伤，再防御减伤，下回合利用易伤打更高伤害。"
+
+        "地图分析：3条路线。路线0有精英和篝火，路线1全是普通怪。
+         HP 85%很健康，走精英路线拿遗物加速成长！"
+    """
+    # This tool doesn't call the game — it only sends text to the displayer.
+    # The _instrumented_tool wrapper handles the displayer notification.
+    return "OK"
+
+
+@mcp.tool()
 async def get_game_state(format: str = "markdown") -> str:
     """Get the current Slay the Spire 2 game state.
 
