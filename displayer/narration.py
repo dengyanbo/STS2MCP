@@ -78,8 +78,13 @@ class NarrationEngine:
         self._last_error: str | None = None
         self._action_count: int = 0
 
-    def narrate(self, tool_name: str, params: dict, result: str) -> str | None:
-        """Generate rich Chinese narration for a tool call."""
+    def narrate(self, tool_name: str, params: dict, result: str) -> tuple[str | None, str]:
+        """Generate narration text and event type for a tool call.
+
+        Returns:
+            (text, event_type) — text is None to suppress the event.
+            event_type is one of: "narration", "action", "state".
+        """
         result_data = self._try_parse_json(result)
 
         # Detect errors from the result and track them
@@ -90,8 +95,6 @@ class NarrationEngine:
         if tool_name in ("get_game_state", "mp_get_game_state"):
             if result_data:
                 self._last_state = result_data
-            elif not result_data and result:
-                pass
 
         # Track turn actions for end-of-turn summary
         if tool_name in ("combat_end_turn", "mp_combat_end_turn"):
@@ -100,13 +103,14 @@ class NarrationEngine:
             text = _narrate_end_turn(params, result, result_data, self._last_state, summary)
             self._last_tool = tool_name
             self._action_count = 0
-            return text
+            return text, "action"
 
         if tool_name in ("combat_play_card", "mp_combat_play_card",
                          "use_potion", "mp_use_potion"):
             action_text = _NARRATORS.get(tool_name, _narrate_generic)(
                 params, result, result_data, self._last_state)
-            self._turn_actions.append(action_text)
+            if action_text:
+                self._turn_actions.append(action_text)
             self._action_count += 1
 
         handler = _NARRATORS.get(tool_name, _narrate_generic)
@@ -117,7 +121,6 @@ class NarrationEngine:
         if self._last_error and result_data and result_data.get("status") == "error":
             error_note = f"\n⚠️ 操作失败: {self._last_error}"
         elif self._last_error and result_data and result_data.get("status") == "ok":
-            # Previous error was corrected
             error_note = f"\n✅ 已修正之前的错误（{self._last_error}）"
             self._last_error = None
 
@@ -125,7 +128,10 @@ class NarrationEngine:
             text = text + error_note
 
         self._last_tool = tool_name
-        return text
+
+        # Classify event type
+        event_type = _classify_event(tool_name)
+        return text, event_type
 
     @staticmethod
     def _try_parse_json(text: str) -> dict | None:
@@ -243,11 +249,6 @@ def _total_incoming_damage(enemies: list[dict]) -> int:
     return total
 
 
-def _format_reason(params: dict) -> str:
-    """Format AI reasoning text if provided via the `reason` parameter."""
-    reason = params.get("reason")
-    return f"\n💭 {reason}" if reason else ""
-
 
 # ---------------------------------------------------------------------------
 # State narrators (get_game_state)
@@ -255,9 +256,9 @@ def _format_reason(params: dict) -> str:
 
 def _narrate_get_state(
     params: dict, result: str, parsed: dict | None, state: dict | None
-) -> str:
+) -> str | None:
     if not parsed:
-        return "🔍 让我看看现在是什么情况..."
+        return None  # No game data — suppress
 
     st = parsed.get("state_type", "unknown")
 
@@ -278,16 +279,16 @@ def _narrate_get_state(
     if st == "hand_select":
         return _narrate_hand_select_state(parsed)
     if st == "menu":
-        return "🏠 在主菜单，等待开始新的一局..."
+        return None  # Menu — no game info
     if st == "treasure":
-        return "🎁 发现宝箱！看看里面有什么好东西。"
+        return _narrate_treasure_state(parsed)
     if st == "card_select":
         return _narrate_card_select_state(parsed)
     if st == "relic_select":
         return _narrate_relic_select_state(parsed)
     if st == "bundle_select":
-        return "📦 需要选择一个卡组包，让我仔细看看各个选项..."
-    return f"🔍 正在查看游戏画面（{_zh_node(st)}）..."
+        return _narrate_bundle_select_state(parsed)
+    return None  # Unknown state — suppress
 
 
 def _narrate_combat_state(data: dict, st: str) -> str:
@@ -298,7 +299,7 @@ def _narrate_combat_state(data: dict, st: str) -> str:
     round_num = battle.get("round", "?")
 
     if turn == "enemy":
-        return "⏳ 敌方正在行动，等待中..."
+        return None  # Enemy turn — no useful info to show
 
     label = {"monster": "普通战斗", "elite": "⚔️ 精英战", "boss": "👑 首领战"}
     lines = [f"[ {label.get(st, '战斗')} — 第{round_num}回合 ]"]
@@ -508,11 +509,11 @@ def _narrate_shop_state(data: dict) -> str:
     return "\n".join(lines)
 
 
-def _narrate_rewards_state(data: dict) -> str:
+def _narrate_rewards_state(data: dict) -> str | None:
     rewards = data.get("rewards", {})
     items = rewards.get("items", [])
     if not items:
-        return "🏆 战斗胜利！来看看奖励吧..."
+        return None  # No reward data — suppress
 
     lines = ["🏆 [ 战斗奖励 ]"]
     for item in items:
@@ -521,11 +522,11 @@ def _narrate_rewards_state(data: dict) -> str:
     return "\n".join(lines)
 
 
-def _narrate_card_reward_state(data: dict) -> str:
+def _narrate_card_reward_state(data: dict) -> str | None:
     cr = data.get("card_reward", {})
     cards = cr.get("cards", [])
     if not cards:
-        return "🃏 让我看看有哪些卡牌可以选..."
+        return None  # No card data — suppress
 
     lines = ["🃏 [ 卡牌奖励 ] 需要选择一张卡牌:"]
     for c in cards:
@@ -564,11 +565,11 @@ def _narrate_card_select_state(data: dict) -> str:
     return "\n".join(lines)
 
 
-def _narrate_relic_select_state(data: dict) -> str:
+def _narrate_relic_select_state(data: dict) -> str | None:
     rs = data.get("relic_select", {})
     relics = rs.get("relics", [])
     if not relics:
-        return "🏺 让我看看有哪些遗物可选..."
+        return None  # No relic data — suppress
 
     lines = ["🏺 [ 遗物选择 ]"]
     for r in relics:
@@ -578,6 +579,41 @@ def _narrate_relic_select_state(data: dict) -> str:
         if desc:
             relic_line += f": {desc}"
         lines.append(relic_line)
+    return "\n".join(lines)
+
+
+def _narrate_treasure_state(data: dict) -> str | None:
+    """Narrate treasure chest contents."""
+    treasure = data.get("treasure", {})
+    relics = treasure.get("relics", [])
+    if not relics:
+        return None  # No data — suppress
+    lines = ["🎁 [ 宝箱 ]"]
+    for r in relics:
+        name = r.get("name", "???")
+        desc = r.get("description", "")
+        relic_line = f"  • {name}"
+        if desc:
+            relic_line += f": {desc}"
+        lines.append(relic_line)
+    return "\n".join(lines)
+
+
+def _narrate_bundle_select_state(data: dict) -> str | None:
+    """Narrate bundle selection with actual bundle info."""
+    bs = data.get("bundle_select", data.get("bundles", {}))
+    bundles = bs.get("bundles", []) if isinstance(bs, dict) else []
+    if not bundles:
+        return None  # No data — suppress
+    lines = ["📦 [ 卡组包选择 ]"]
+    for i, b in enumerate(bundles):
+        name = b.get("name", f"卡组包{i}")
+        cards = b.get("cards", [])
+        card_names = [c.get("name", "?") for c in cards]
+        line = f"  [{i}] {name}"
+        if card_names:
+            line += f": {', '.join(card_names)}"
+        lines.append(line)
     return "\n".join(lines)
 
 
@@ -618,10 +654,6 @@ def _narrate_play_card(
         error = parsed.get("error", parsed.get("message", "未知错误"))
         parts.append(f"❌ 出牌失败: {error}")
 
-    reason = _format_reason(params)
-    if reason:
-        parts.append(reason)
-
     return "\n".join(parts)
 
 
@@ -640,11 +672,6 @@ def _narrate_combat_batch(
 ) -> str:
     actions = params.get("actions", [])
     lines = [f"⚡ [ 连续操作: {len(actions)}个动作 ]"]
-
-    # Show overall strategy if provided
-    reason = _format_reason(params)
-    if reason:
-        lines.append(reason)
 
     for i, action in enumerate(actions):
         atype = action.get("type", "?")
@@ -691,10 +718,6 @@ def _narrate_use_potion(
     if parsed and parsed.get("status") == "error":
         lines.append(f"❌ 失败: {parsed.get('error', '未知错误')}")
 
-    reason = _format_reason(params)
-    if reason:
-        lines.append(reason)
-
     return "\n".join(lines)
 
 
@@ -703,15 +726,13 @@ def _narrate_discard_potion(
 ) -> str:
     slot = params.get("slot", "?")
     name = _resolve_potion_name(slot, state) if isinstance(slot, int) else f"第{slot}瓶"
-    line = f"🗑️ 丢弃药水: {name}（腾出药水槽位）"
-    reason = _format_reason(params)
-    return line + reason if reason else line
+    return f"🗑️ 丢弃药水: {name}（腾出药水槽位）"
 
 
 def _narrate_proceed(
     params: dict, result: str, parsed: dict | None, state: dict | None
-) -> str:
-    return "🚶 离开当前区域，前往地图..."
+) -> str | None:
+    return None  # Mechanical navigation — suppress
 
 
 def _narrate_map_choice(
@@ -745,9 +766,8 @@ def _narrate_map_choice(
             if others:
                 other_types = [_zh_node(o.get("type", "?")) for o in others]
                 lines.append(f"  其他路径: {', '.join(other_types)}")
-            lines.append(_format_reason(params))
             return "\n".join(line for line in lines if line)
-    return f"🗺️ 选择第{idx}条路径" + _format_reason(params)
+    return f"🗺️ 选择第{idx}条路径"
 
 
 def _narrate_rest_choice(
@@ -774,9 +794,8 @@ def _narrate_rest_choice(
             lines = [f"🔥 篝火选择: {chosen_name}（生命: {hp}/{max_hp}）"]
             if other_names:
                 lines.append(f"  其他选项: {', '.join(other_names)}")
-            lines.append(_format_reason(params))
             return "\n".join(line for line in lines if line)
-    return "🔥 篝火选择..." + _format_reason(params)
+    return "🔥 篝火选择..."
 
 
 def _narrate_shop_buy(
@@ -799,9 +818,8 @@ def _narrate_shop_buy(
                     if desc:
                         lines.append(f"  效果: {desc}")
                     lines.append(f"  剩余金币: {gold}")
-                    lines.append(_format_reason(params))
                     return "\n".join(line for line in lines if line)
-    return f"🛒 购买第{idx}件商品" + _format_reason(params)
+    return f"🛒 购买第{idx}件商品"
 
 
 def _narrate_event_option(
@@ -836,9 +854,8 @@ def _narrate_event_option(
                     o_desc = o.get("description", "")
                     other_strs.append(f"「{o_title}」" + (f"（{o_desc}）" if o_desc else ""))
                 lines.append(f"  放弃选项: {'; '.join(other_strs)}")
-            lines.append(_format_reason(params))
             return "\n".join(line for line in lines if line)
-    return f"📜 事件选择第{idx}项" + _format_reason(params)
+    return f"📜 事件选择第{idx}项"
 
 
 def _narrate_advance_dialogue(
@@ -867,17 +884,14 @@ def _narrate_claim_reward(
             if remaining:
                 rem_names = [i.get("description", i.get("type", "?")) for i in remaining]
                 lines.append(f"  剩余奖励: {', '.join(rem_names)}")
-            lines.append(_format_reason(params))
             return "\n".join(line for line in lines if line)
-    return f"🎁 领取第{idx}个奖励" + _format_reason(params)
+    return f"🎁 领取第{idx}个奖励"
 
 
 def _narrate_claim_all(
     params: dict, result: str, parsed: dict | None, state: dict | None
 ) -> str:
-    line = "🎁 一次性领取所有非卡牌奖励"
-    reason = _format_reason(params)
-    return line + reason if reason else line
+    return "🎁 一次性领取所有非卡牌奖励"
 
 
 def _narrate_pick_card(
@@ -913,9 +927,8 @@ def _narrate_pick_card(
                         oname += "+"
                     other_strs.append(f"{oname}（{ocost}费）")
                 lines.append(f"  放弃选项: {', '.join(other_strs)}")
-            lines.append(_format_reason(params))
             return "\n".join(line for line in lines if line)
-    return f"🃏 选择第{idx}张卡牌" + _format_reason(params)
+    return f"🃏 选择第{idx}张卡牌"
 
 
 def _narrate_skip_card(
@@ -933,27 +946,26 @@ def _narrate_skip_card(
                 names.append(f"{name}（{cost}费）")
             lines = ["🚫 跳过卡牌奖励"]
             lines.append(f"  可选卡牌: {', '.join(names)}")
-            lines.append(_format_reason(params))
             return "\n".join(line for line in lines if line)
-    return "🚫 跳过卡牌奖励" + _format_reason(params)
+    return "🚫 跳过卡牌奖励"
 
 
 def _narrate_select_card(
     params: dict, result: str, parsed: dict | None, state: dict | None
-) -> str:
-    return "🃏 正在选择卡牌..."
+) -> str | None:
+    return None  # Mechanical — suppress
 
 
 def _narrate_confirm(
     params: dict, result: str, parsed: dict | None, state: dict | None
-) -> str:
-    return "✅ 确认选择"
+) -> str | None:
+    return None  # Mechanical — suppress
 
 
 def _narrate_cancel(
     params: dict, result: str, parsed: dict | None, state: dict | None
-) -> str:
-    return "↩️ 取消选择"
+) -> str | None:
+    return None  # Mechanical — suppress
 
 
 def _narrate_relic_select(
@@ -980,9 +992,8 @@ def _narrate_relic_select(
             if others:
                 other_strs = [o.get("name", "?") for o in others]
                 lines.append(f"  放弃选项: {', '.join(other_strs)}")
-            lines.append(_format_reason(params))
             return "\n".join(line for line in lines if line)
-    return f"🏺 选择第{idx}个遗物" + _format_reason(params)
+    return f"🏺 选择第{idx}个遗物"
 
 
 def _narrate_relic_skip(
@@ -994,9 +1005,8 @@ def _narrate_relic_skip(
             names = [r.get("name", "?") for r in relics]
             lines = ["🚫 跳过遗物选择"]
             lines.append(f"  可选遗物: {', '.join(names)}")
-            lines.append(_format_reason(params))
             return "\n".join(line for line in lines if line)
-    return "🚫 跳过遗物选择" + _format_reason(params)
+    return "🚫 跳过遗物选择"
 
 
 def _narrate_treasure(
@@ -1011,17 +1021,14 @@ def _narrate_treasure(
             lines = [f"🎁 从宝箱获取遗物: {name}"]
             if desc:
                 lines.append(f"  效果: {desc}")
-            lines.append(_format_reason(params))
             return "\n".join(line for line in lines if line)
-    line = "🎁 从宝箱中获取遗物"
-    reason = _format_reason(params)
-    return line + reason if reason else line
+    return "🎁 从宝箱中获取遗物"
 
 
 def _narrate_crystal_sphere(
     params: dict, result: str, parsed: dict | None, state: dict | None
-) -> str:
-    return "🔮 操作水晶球小游戏..."
+) -> str | None:
+    return None  # Mechanical — suppress
 
 
 def _narrate_combat_select_card(
@@ -1029,15 +1036,13 @@ def _narrate_combat_select_card(
 ) -> str:
     idx = params.get("card_index", "?")
     card_name = _resolve_card_name(idx, state) if isinstance(idx, int) else f"第{idx}张"
-    line = f"✋ 选中: {card_name}"
-    reason = _format_reason(params)
-    return line + reason if reason else line
+    return f"✋ 选中: {card_name}"
 
 
 def _narrate_generic(
     params: dict, result: str, parsed: dict | None, state: dict | None
-) -> str:
-    return "🤔 思考中..."
+) -> str | None:
+    return None  # Unknown tool — suppress filler
 
 
 def _narrate_ai_narration(
@@ -1048,83 +1053,114 @@ def _narrate_ai_narration(
 
 
 # ---------------------------------------------------------------------------
+# Event type classification
+# ---------------------------------------------------------------------------
+
+_EVENT_TYPE_MAP: dict[str, str] = {
+    "narrate": "narration",
+    "get_game_state": "state",
+    "combat_play_card": "action",
+    "combat_batch": "action",
+    "combat_end_turn": "action",
+    "use_potion": "action",
+    "discard_potion": "action",
+    "combat_select_card": "action",
+    "combat_confirm_selection": "action",
+    "map_choose_node": "action",
+    "event_choose_option": "action",
+    "event_advance_dialogue": "action",
+    "rest_choose_option": "action",
+    "shop_purchase": "action",
+    "rewards_claim": "action",
+    "rewards_claim_all": "action",
+    "rewards_pick_card": "action",
+    "rewards_skip_card": "action",
+    "deck_select_card": "action",
+    "deck_confirm_selection": "action",
+    "deck_cancel_selection": "action",
+    "bundle_select": "action",
+    "bundle_confirm_selection": "action",
+    "bundle_cancel_selection": "action",
+    "relic_select": "action",
+    "relic_skip": "action",
+    "treasure_claim_relic": "action",
+    "proceed_to_map": "action",
+    "crystal_sphere_set_tool": "action",
+    "crystal_sphere_click_cell": "action",
+    "crystal_sphere_proceed": "action",
+}
+# Auto-populate mp_ variants
+_EVENT_TYPE_MAP.update({
+    f"mp_{k}": v for k, v in _EVENT_TYPE_MAP.items()
+    if k != "narrate"
+})
+
+
+def _classify_event(tool_name: str) -> str:
+    """Classify tool into event type: narration, action, or state."""
+    return _EVENT_TYPE_MAP.get(tool_name, "action")
+
+
+# ---------------------------------------------------------------------------
 # Tool name -> handler map
 # ---------------------------------------------------------------------------
 
-_NARRATORS: dict[str, Any] = {
+# Base (single-player) tool → handler mapping.
+# mp_ variants are auto-generated below.
+_BASE_NARRATORS: dict[str, Any] = {
     # AI narration (pass-through)
     "narrate": _narrate_ai_narration,
     # State queries
     "get_game_state": _narrate_get_state,
-    "mp_get_game_state": _narrate_get_state,
     # Combat
     "combat_play_card": _narrate_play_card,
-    "mp_combat_play_card": _narrate_play_card,
     "combat_batch": _narrate_combat_batch,
     "combat_end_turn": _narrate_end_turn,
-    "mp_combat_end_turn": _narrate_end_turn,
-    "mp_combat_undo_end_turn": lambda *a: "↩️ 撤回结束回合投票",
     "combat_select_card": _narrate_combat_select_card,
-    "mp_combat_select_card": _narrate_combat_select_card,
     "combat_confirm_selection": _narrate_confirm,
-    "mp_combat_confirm_selection": _narrate_confirm,
     # Potions
     "use_potion": _narrate_use_potion,
-    "mp_use_potion": _narrate_use_potion,
     "discard_potion": _narrate_discard_potion,
-    "mp_discard_potion": _narrate_discard_potion,
     # Navigation
     "proceed_to_map": _narrate_proceed,
-    "mp_proceed_to_map": _narrate_proceed,
     "map_choose_node": _narrate_map_choice,
-    "mp_map_vote": _narrate_map_choice,
     # Rest site
     "rest_choose_option": _narrate_rest_choice,
-    "mp_rest_choose_option": _narrate_rest_choice,
     # Shop
     "shop_purchase": _narrate_shop_buy,
-    "mp_shop_purchase": _narrate_shop_buy,
     # Events
     "event_choose_option": _narrate_event_option,
-    "mp_event_choose_option": _narrate_event_option,
     "event_advance_dialogue": _narrate_advance_dialogue,
-    "mp_event_advance_dialogue": _narrate_advance_dialogue,
     # Rewards
     "rewards_claim": _narrate_claim_reward,
-    "mp_rewards_claim": _narrate_claim_reward,
     "rewards_claim_all": _narrate_claim_all,
-    "mp_rewards_claim_all": _narrate_claim_all,
     "rewards_pick_card": _narrate_pick_card,
-    "mp_rewards_pick_card": _narrate_pick_card,
     "rewards_skip_card": _narrate_skip_card,
-    "mp_rewards_skip_card": _narrate_skip_card,
     # Card selection overlay
     "deck_select_card": _narrate_select_card,
-    "mp_deck_select_card": _narrate_select_card,
     "deck_confirm_selection": _narrate_confirm,
-    "mp_deck_confirm_selection": _narrate_confirm,
     "deck_cancel_selection": _narrate_cancel,
-    "mp_deck_cancel_selection": _narrate_cancel,
     # Bundle
-    "bundle_select": lambda *a: "📦 查看卡组包...",
-    "mp_bundle_select": lambda *a: "📦 查看卡组包...",
-    "bundle_confirm_selection": lambda *a: "📦 选择此卡组包！",
-    "mp_bundle_confirm_selection": lambda *a: "📦 选择此卡组包！",
-    "bundle_cancel_selection": lambda *a: "📦 再看看其他卡组包...",
-    "mp_bundle_cancel_selection": lambda *a: "📦 再看看其他卡组包...",
+    "bundle_select": lambda *a: None,
+    "bundle_confirm_selection": lambda *a: "📦 确认选择卡组包！",
+    "bundle_cancel_selection": lambda *a: None,
     # Relic selection
     "relic_select": _narrate_relic_select,
-    "mp_relic_select": _narrate_relic_select,
     "relic_skip": _narrate_relic_skip,
-    "mp_relic_skip": _narrate_relic_skip,
     # Treasure
     "treasure_claim_relic": _narrate_treasure,
-    "mp_treasure_claim_relic": _narrate_treasure,
     # Crystal sphere
     "crystal_sphere_set_tool": _narrate_crystal_sphere,
-    "mp_crystal_sphere_set_tool": _narrate_crystal_sphere,
     "crystal_sphere_click_cell": _narrate_crystal_sphere,
-    "mp_crystal_sphere_click_cell": _narrate_crystal_sphere,
-    "crystal_sphere_proceed": lambda *a: "🔮 水晶球占卜完成",
-    "mp_crystal_sphere_proceed": lambda *a: "🔮 水晶球占卜完成",
+    "crystal_sphere_proceed": lambda *a: None,
 }
+
+# Build final map: base + auto-generated mp_ variants + special mp-only tools
+_NARRATORS: dict[str, Any] = dict(_BASE_NARRATORS)
+_NARRATORS.update({
+    f"mp_{k}": v for k, v in _BASE_NARRATORS.items()
+    if k != "narrate"  # narrate has no mp_ variant
+})
+# mp-only tools (no single-player equivalent)
+_NARRATORS["mp_map_vote"] = _narrate_map_choice
+_NARRATORS["mp_combat_undo_end_turn"] = lambda *a: None

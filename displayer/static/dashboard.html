@@ -259,6 +259,7 @@ let lastEventId = 0;
 let eventSource = null;
 let typingQueue = [];
 let isTyping = false;
+const MAX_DOM_MESSAGES = 300;
 
 // Detect if user scrolled up to pause auto-scroll
 messagesEl.addEventListener('scroll', () => {
@@ -278,13 +279,23 @@ function formatTime(ts) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
+function trimOldMessages() {
+  const msgs = messagesEl.querySelectorAll('.message');
+  const overflow = msgs.length - MAX_DOM_MESSAGES;
+  if (overflow > 0) {
+    for (let i = 0; i < overflow; i++) {
+      msgs[i].remove();
+    }
+  }
+}
+
 function createMessageEl(event, animate) {
   if (emptyState.parentNode) {
     emptyState.remove();
   }
 
   const div = document.createElement('div');
-  div.className = `message ${event.event_type || 'thinking'}`;
+  div.className = `message ${event.event_type || 'action'}`;
   div.dataset.eventId = event.id;
 
   const content = document.createElement('span');
@@ -299,8 +310,8 @@ function createMessageEl(event, animate) {
   messagesEl.appendChild(div);
 
   if (animate) {
-    // Skip animation for long multi-line messages (state reports)
-    if (event.text && event.text.length > 100) {
+    // Skip animation when queue is backing up (3+ pending) or text is long
+    if (typingQueue.length >= 3 || (event.text && event.text.length > 100)) {
       content.textContent = event.text;
     } else {
       typeText(content, event.text);
@@ -309,6 +320,7 @@ function createMessageEl(event, animate) {
     content.textContent = event.text;
   }
 
+  trimOldMessages();
   scrollToBottom();
   return div;
 }

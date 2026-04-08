@@ -1,19 +1,22 @@
-"""Thread-safe event store with SQLite persistence."""
+"""Thread-safe event store with SQLite persistence and bounded memory."""
 
 import asyncio
 import json
 import sqlite3
 import time
+from collections import deque
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from threading import Lock
+
+_MAX_MEMORY_EVENTS = 500
 
 
 @dataclass
 class Event:
     id: int
     timestamp: float
-    event_type: str  # "thinking", "action", "error"
+    event_type: str  # "narration", "action", "state"
     text: str
     tool_name: str = ""
     raw_data: str = ""
@@ -30,7 +33,7 @@ class EventStore:
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
 
         self._lock = Lock()
-        self._events: list[Event] = []
+        self._events: deque[Event] = deque(maxlen=_MAX_MEMORY_EVENTS)
         self._next_id = 1
         self._subscribers: list[asyncio.Queue] = []
 
@@ -53,14 +56,16 @@ class EventStore:
         conn.close()
 
     def _load_history(self):
+        """Load only the most recent events into memory."""
         conn = sqlite3.connect(str(self._db_path))
         rows = conn.execute(
             "SELECT id, timestamp, event_type, text, tool_name, raw_data "
-            "FROM events ORDER BY id"
+            "FROM events ORDER BY id DESC LIMIT ?",
+            (_MAX_MEMORY_EVENTS,),
         ).fetchall()
         conn.close()
 
-        for row in rows:
+        for row in reversed(rows):
             self._events.append(Event(
                 id=row[0], timestamp=row[1], event_type=row[2],
                 text=row[3], tool_name=row[4], raw_data=row[5],
@@ -72,7 +77,7 @@ class EventStore:
     def append(
         self,
         text: str,
-        event_type: str = "thinking",
+        event_type: str = "action",
         tool_name: str = "",
         raw_data: dict | None = None,
     ) -> Event:

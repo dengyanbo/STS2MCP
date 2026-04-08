@@ -43,12 +43,14 @@ uv run displayer/server.py --port 15580 --host 0.0.0.0
 
 ## Features
 
-- 🎮 **Live narration** — Human-readable thinking text for every AI action
-- ⚡ **Typing animation** — ChatGPT-like character-by-character reveal
+- 🎮 **Live narration** — Human-readable thinking text for AI decisions
+- ⚡ **Typing animation** — ChatGPT-like character-by-character reveal (auto-skips during bursts)
 - 📜 **Persistent history** — SQLite storage, survives page refresh
 - 🔌 **Auto-reconnect** — SSE reconnects automatically on disconnect
 - 🎨 **Dark theme** — Game-appropriate UI
 - 🔇 **Passive** — No changes to AI behavior; zero impact on gameplay
+- 🧹 **Bounded memory** — In-memory cap of 500 events, DOM cap of 300 messages
+- 🚫 **No noise** — Filler messages (thinking..., confirming...) are suppressed
 
 ## Files
 
