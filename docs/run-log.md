@@ -115,3 +115,50 @@ Root causes: (1) 松动羊毛剪 cost 13 HP at game start; (2) 毛绒伏地虫 f
 - ❌ 错误: 松动羊毛剪 relic choice — 13 HP cost too steep, left run crippled from start
 - ❌ 错误: Fuzzy Wurm fight strategy — should have used potion earlier or blocked more aggressively
 - ❌ 错误: Used 爆炸安瓿 too late in Inklet fight — should have saved for a fight where it could matter
+
+## Run #4
+
+- **Date:** 2026-04-08
+- **Character:** 铁甲战士 (Ironclad)
+- **Result:** ❌ Defeated at Act 1 Elite (Floor 11)
+- **Ascension:** 0
+- **Elite:** 多尼斯异鸟 (Byrdonis) — 93 HP, 领地意识 (+1 Str/turn)
+
+### Deck (13 cards)
+- 打击 ×3, 防御 ×4, 痛击 (2), 武装 (1), 耸肩无视 ×2 (1), 御血术 (1), 闪电霹雳 (1)
+
+### Relics
+- 燃烧之血, 精准剪刀, 水银沙漏
+
+### Potions
+- 力量药水 (used T1 of elite — correct timing)
+
+### Death Cause
+多尼斯异鸟 gained +1 Str per turn via 领地意识. By Round 6, it had 5 Str and dealt 8×3=24 damage. Entered elite at 32 HP (38% max), already depleted from catastrophic fights on Floors 6 and 8. Could not block 24 with max 18 block available. Dead at Round 6.
+
+Root causes: (1) Slime fight (Floor 6) drained HP from 55→20 due to status card bloat over 12 rounds; (2) Mawler fight (Floor 8) was 16 rounds at ultra-low HP; (3) Only 1 rest site before elite, recovered to 32 HP which was insufficient.
+
+### Key Moments
+1. **Neow (Floor 1):** 精准剪刀 — removed 1 Strike. Correct choice over 树叶药膏 (-10 max HP).
+2. **Floor 3 Event:** +5 max HP from 变形灵. Saved gold for shop.
+3. **Floor 4 Shop:** Removed Strike (75g). Deck down to 9 cards — very lean.
+4. **Floor 6 (Slime Fight):** 3 slimes (Twig + Medium Leaf + Small Leaf). Status cards bloated deck from 10 to ~20 effective cards. Fight lasted 12 rounds. HP 55→20. WORST FIGHT.
+5. **Floor 7 Shop:** Bought 御血术 (35g sale) — 14 damage for 1 energy. Great value.
+6. **Floor 8 (Mawler):** 72 HP enemy with alternating 8/14/21 damage patterns. Debuffed with Vulnerable. 16-round fight at HP 20→7→1. Survived by 1 HP miracle.
+7. **Floor 9 Rest:** Healed 25 HP (7→32).
+8. **Floor 10 Treasure:** Got 水银沙漏 (3 AOE/turn) + ~46 gold.
+9. **Floor 11 Elite (Byrdonis):** Used Strength potion T1. Dealt good damage but enemy scaled too fast. Died Round 6.
+
+### What Went Right
+- 精准剪刀 + shop removal = 2 Strikes removed early. Excellent deck thinning.
+- 御血术 at 35g sale — fantastic damage efficiency (14 damage for 1 energy)
+- 水银沙漏 provided free 3 AOE/turn, valuable in all fights
+- 力量药水 T1 on elite — correct timing, boosted all attacks
+- Survived Mawler fight at 1 HP — pure clutch play with 御血术 gambit
+
+### What Went Wrong
+- **Slime fight catastrophe** — should have killed leaf slimes faster, possibly using more aggressive play instead of conservative approach
+- **武装 upgrades are COMBAT-ONLY in STS2** — wasted turns upgrading cards that didn't persist. Major STS1→STS2 difference.
+- **combat_batch index shifting** — Shrug It Off draws change indices mid-batch, causing wrong cards to play. Critical technical issue.
+- **Entered elite at 38% HP** — far below 70% threshold. Only path available, but the run was already doomed.
+- **Mawler fight (16 rounds)** — too slow. Should have used Bash more aggressively early to apply Vulnerable and speed up kills.
