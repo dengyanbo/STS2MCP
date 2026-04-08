@@ -388,3 +388,50 @@ Root causes:
 - **combat_batch index shifting** — critical bug caused multiple misplays
 - **Nibbits allowed to scale** — should have focused one down immediately
 - **Potion discipline unclear** — may have saved too aggressively again
+
+## Run #10
+
+- **Date:** 2026-04-08
+- **Character:** 铁甲战士 (Ironclad)
+- **Result:** ❌ Defeated at Act 1 Boss (Floor 17)
+- **Ascension:** 0
+- **Boss:** 仪式兽 (Ceremonial Beast) — 252 HP
+
+### Deck (18 cards)
+- 打击 ×4, 防御 ×4, 痛击 (2), 万向斩 (1), 燃烧+ (1), 武装 (1), 闪电霹雳 (1), 无情猛攻 (2), 势不可当 (1), 铁斩波 (1), 耸肩无视 (1), 放血 (0)
+
+### Relics
+- 燃烧之血, 铅制镇纸, 护喉甲(4层覆甲), 转经轮, 钢笔尖(每10攻击双倍), 准备背包(开局+2抽牌)
+
+### Potions
+- (none remaining at death)
+
+### Death Cause
+仪式兽 (Ceremonial Beast) applied 昏眩 (Daze) debuff — restricts play to only 1 card per turn. At 15HP, used 放血 (-3HP → 12HP) on a free turn before boss attacked for 18. Even at 15HP with 1 card (防御=5 block), would have survived: 15 - (18-5) = 2HP. The 放血 self-damage was literally the 3HP difference between life and death.
+
+Root causes:
+1. **昏眩 debuff** — locked to 1 card/turn, can't block enough vs 18 damage
+2. **放血 at 15HP** — cost exactly the 3HP survival margin
+3. **Low HP entering boss** (66/85 = 78%) — cumulative damage left no buffer for boss mechanics
+4. **Insufficient block scaling** — 1 card/turn under 昏眩 means only 5 block vs 18 damage
+
+### Key Moments
+1. **Act 1 elites (×3):** Excellent combat — won all 3 with strong synergies. Pen Nib + Slow + Vulnerable triple multiplier on 旧日雕像 was devastating.
+2. **势不可当 + 覆甲 synergy:** Every 防御 card = 5 block + ~5 passive damage via 势不可当. Made each defend worth ~10 value.
+3. **横冲直撞 mechanic triggered:** Successfully pushed boss below 150HP, triggering stun + strength wipe. This was the correct play.
+4. **昏眩 applied mid-fight:** Boss restricted to 1 card/turn. Unable to block 18 damage with just 1 card.
+5. **Fatal 放血 (15HP → 12HP):** Used on what appeared to be a safe non-attack turn. Boss attacked for 18, only 1 card available (5 block max). 12 - 13 unblocked = dead. At 15HP would have survived with 2HP.
+
+### What Went Right
+- 3 elite victories in Act 1 — 6 relics total, excellent scaling
+- 势不可当 + 覆甲 identified as strong passive damage engine
+- 横冲直撞 boss mechanic correctly exploited (stun at 150HP)
+- Pen Nib multiplier timing was optimal
+- Deck was lean (18 cards) with clear synergies
+
+### What Went Wrong
+- **Used 放血 at critical HP** — 3HP self-damage = exact death margin. Never use self-damage cards below 20HP
+- **Underestimated 昏眩** — 1 card/turn makes blocking impossible vs strong attacks
+- **No plan for 昏眩 recovery** — needed artifact/debuff cleanse or enough HP to tank through
+- **HP management entering boss** — 66/85 (78%) seemed safe but wasn't enough for boss with debuff mechanics
+- **288 gold unspent** — massive gold waste, should have spent on removal/potions in shop

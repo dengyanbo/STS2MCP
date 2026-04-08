@@ -101,17 +101,34 @@ class NarrationEngine:
 
         # Cache game state for context — prefer externally-provided state,
         # then fall back to parsing the result (for JSON-format responses).
+        # For action tools, extract game_state from the wrapped response.
+        # Use pre-action state for narration (so handlers see state BEFORE the action).
+        pre_action_state = self._last_state
+
         if state_data and isinstance(state_data, dict):
             self._last_state = state_data
         elif tool_name in ("get_game_state", "mp_get_game_state"):
             if result_data:
                 self._last_state = result_data
+        elif result_data and isinstance(result_data, dict):
+            # Action results: {"status": "ok", "game_state": {...}}
+            gs = result_data.get("game_state")
+            if isinstance(gs, dict) and "state_type" in gs:
+                self._last_state = gs
+            # Direct game state (e.g. combat_end_turn returns raw state)
+            elif "state_type" in result_data:
+                self._last_state = result_data
+
+        # For get_game_state, use the newly-cached state; for actions, use
+        # pre-action state so handlers can resolve consumed items by index.
+        _is_state_query = tool_name in ("get_game_state", "mp_get_game_state")
+        handler_state = self._last_state if _is_state_query else pre_action_state
 
         # Track turn actions for end-of-turn summary
         if tool_name in ("combat_end_turn", "mp_combat_end_turn"):
             summary = self._turn_actions.copy()
             self._turn_actions.clear()
-            text = _narrate_end_turn(params, result, result_data, self._last_state, summary)
+            text = _narrate_end_turn(params, result, result_data, handler_state, summary)
             self._last_tool = tool_name
             self._action_count = 0
             return text, "action"
@@ -119,13 +136,13 @@ class NarrationEngine:
         if tool_name in ("combat_play_card", "mp_combat_play_card",
                          "use_potion", "mp_use_potion"):
             action_text = _NARRATORS.get(tool_name, _narrate_generic)(
-                params, result, result_data, self._last_state)
+                params, result, result_data, handler_state)
             if action_text:
                 self._turn_actions.append(action_text)
             self._action_count += 1
 
         handler = _NARRATORS.get(tool_name, _narrate_generic)
-        text = handler(params, result, result_data, self._last_state)
+        text = handler(params, result, result_data, handler_state)
 
         # Build error correction note
         error_note = ""
@@ -173,11 +190,11 @@ def _resolve_card(card_index: int, state: dict | None) -> dict | None:
 def _resolve_card_name(card_index: int, state: dict | None) -> str:
     card = _resolve_card(card_index, state)
     if card:
-        name = card.get("name", f"#{card_index}")
+        name = card.get("name", f"#{card_index + 1}")
         if card.get("upgraded", False):
             name += "+"
         return name
-    return f"#{card_index}"
+    return f"#{card_index + 1}"
 
 
 def _resolve_enemy(entity_id: str, state: dict | None) -> dict | None:
@@ -205,7 +222,7 @@ def _resolve_potion(slot: int, state: dict | None) -> dict | None:
 
 def _resolve_potion_name(slot: int, state: dict | None) -> str:
     p = _resolve_potion(slot, state)
-    return p.get("name", f"#{slot}") if p else f"#{slot}"
+    return p.get("name", f"#{slot + 1}") if p else f"#{slot + 1}"
 
 
 def _format_intent(intent: dict) -> str:
@@ -405,6 +422,20 @@ def _narrate_combat_state(data: dict, st: str) -> str:
     return "\n".join(lines)
 
 
+def _route_direction(index: int, total: int) -> str:
+    """Return a directional label (左/中/右) for route selection display."""
+    if total <= 1:
+        return ""
+    if total == 2:
+        return "左" if index == 0 else "右"
+    if total == 3:
+        return ["左", "中", "右"][index] if index < 3 else ""
+    if total == 4:
+        return ["左", "中左", "中右", "右"][index] if index < 4 else ""
+    # 5+ routes: fallback to numbered
+    return f"第{index + 1}条"
+
+
 def _narrate_map_state(data: dict) -> str:
     map_data = data.get("map", {})
     options = map_data.get("next_options", [])
@@ -420,10 +451,13 @@ def _narrate_map_state(data: dict) -> str:
 
     if options:
         lines.append("可选路径:")
-        for opt in options:
+        total = len(options)
+        for i, opt in enumerate(options):
             ntype = _zh_node(opt.get("type", "???"))
             leads = opt.get("leads_to", [])
-            path_str = f"  • {ntype}"
+            direction = _route_direction(i, total)
+            label = f"[{direction}]" if direction else ""
+            path_str = f"  • {label} {ntype}" if label else f"  • {ntype}"
             if leads:
                 next_types = [_zh_node(l.get("type", "?")) for l in leads]
                 path_str += f"（通往: {', '.join(next_types)}）"
@@ -671,7 +705,7 @@ def _narrate_play_card(
     idx = params.get("card_index", "?")
     target = params.get("target")
     card = _resolve_card(idx, state) if isinstance(idx, int) else None
-    card_name = _resolve_card_name(idx, state) if isinstance(idx, int) else f"第{idx}张"
+    card_name = _resolve_card_name(idx, state) if isinstance(idx, int) else f"第{idx + 1}张"
 
     parts = [f"🎴 出牌: {card_name}"]
 
@@ -721,7 +755,7 @@ def _narrate_combat_batch(
         atype = action.get("type", "?")
         if atype == "play_card":
             card_name = _resolve_card_name(action.get("card_index", "?"), state) \
-                if isinstance(action.get("card_index"), int) else f"第{action.get('card_index', '?')}张"
+                if isinstance(action.get("card_index"), int) else f"第{action.get('card_index', '?') + 1}张"
             target = action.get("target")
             line = f"  {i+1}. 出牌: {card_name}"
             if target:
@@ -747,7 +781,7 @@ def _narrate_use_potion(
     slot = params.get("slot", "?")
     target = params.get("target")
     potion = _resolve_potion(slot, state) if isinstance(slot, int) else None
-    name = potion.get("name", f"第{slot}瓶") if potion else f"第{slot}瓶"
+    name = potion.get("name", f"第{slot + 1}瓶") if potion else f"第{slot + 1}瓶"
 
     lines = [f"🧪 使用药水: {name}"]
     if target:
@@ -769,7 +803,7 @@ def _narrate_discard_potion(
     params: dict, result: str, parsed: dict | None, state: dict | None
 ) -> str:
     slot = params.get("slot", "?")
-    name = _resolve_potion_name(slot, state) if isinstance(slot, int) else f"第{slot}瓶"
+    name = _resolve_potion_name(slot, state) if isinstance(slot, int) else f"第{slot + 1}瓶"
     return f"🗑️ 丢弃药水: {name}（腾出药水槽位）"
 
 
@@ -802,7 +836,9 @@ def _narrate_map_choice(
         if chosen:
             ntype = _zh_node(chosen.get("type", "???"))
             leads = chosen.get("leads_to", [])
-            lines = [f"🗺️ 选择路径: 前往「{ntype}」（第{floor}层）"]
+            direction = _route_direction(idx, len(options)) if isinstance(idx, int) else ""
+            dir_label = f"[{direction}] " if direction else ""
+            lines = [f"🗺️ 选择路径: {dir_label}前往「{ntype}」（第{floor}层）"]
             if leads:
                 next_types = [_zh_node(l.get("type", "?")) for l in leads]
                 lines[0] += f" → {', '.join(next_types)}"
@@ -811,7 +847,7 @@ def _narrate_map_choice(
                 other_types = [_zh_node(o.get("type", "?")) for o in others]
                 lines.append(f"  其他路径: {', '.join(other_types)}")
             return "\n".join(line for line in lines if line)
-    return f"🗺️ 选择第{idx}条路径"
+    return f"🗺️ 选择第{idx + 1}条路径"
 
 
 def _narrate_rest_choice(
@@ -861,7 +897,7 @@ def _narrate_shop_buy(
                         lines.append(f"  效果: {desc}")
                     lines.append(f"  剩余金币: {gold}")
                     return "\n".join(line for line in lines if line)
-    return f"🛒 购买第{idx}件商品"
+    return f"🛒 购买第{idx + 1}件商品"
 
 
 def _narrate_event_option(
@@ -897,7 +933,7 @@ def _narrate_event_option(
                     other_strs.append(f"「{o_title}」" + (f"（{o_desc}）" if o_desc else ""))
                 lines.append(f"  放弃选项: {'; '.join(other_strs)}")
             return "\n".join(line for line in lines if line)
-    return f"📜 事件选择第{idx}项"
+    return f"📜 事件选择第{idx + 1}项"
 
 
 def _narrate_advance_dialogue(
@@ -927,7 +963,7 @@ def _narrate_claim_reward(
                 rem_names = [i.get("description", i.get("type", "?")) for i in remaining]
                 lines.append(f"  剩余奖励: {', '.join(rem_names)}")
             return "\n".join(line for line in lines if line)
-    return f"🎁 领取第{idx}个奖励"
+    return f"🎁 领取第{idx + 1}个奖励"
 
 
 def _narrate_claim_all(
@@ -970,7 +1006,7 @@ def _narrate_pick_card(
                     other_strs.append(f"{oname}（{ocost}费）")
                 lines.append(f"  放弃选项: {', '.join(other_strs)}")
             return "\n".join(line for line in lines if line)
-    return f"🃏 选择第{idx}张卡牌"
+    return f"🃏 选择第{idx + 1}张卡牌"
 
 
 def _narrate_skip_card(
@@ -1035,7 +1071,7 @@ def _narrate_relic_select(
                 other_strs = [o.get("name", "?") for o in others]
                 lines.append(f"  放弃选项: {', '.join(other_strs)}")
             return "\n".join(line for line in lines if line)
-    return f"🏺 选择第{idx}个遗物"
+    return f"🏺 选择第{idx + 1}个遗物"
 
 
 def _narrate_relic_skip(
@@ -1077,7 +1113,7 @@ def _narrate_combat_select_card(
     params: dict, result: str, parsed: dict | None, state: dict | None
 ) -> str:
     idx = params.get("card_index", "?")
-    card_name = _resolve_card_name(idx, state) if isinstance(idx, int) else f"第{idx}张"
+    card_name = _resolve_card_name(idx, state) if isinstance(idx, int) else f"第{idx + 1}张"
     return f"✋ 选中: {card_name}"
 
 
@@ -1094,12 +1130,24 @@ def _narrate_ai_narration(
     return params.get("text", "...")
 
 
+def _narrate_mistake(
+    params: dict, result: str, parsed: dict | None, state: dict | None
+) -> str:
+    """Pass through the AI's mistake report text directly."""
+    text = params.get("text", "...")
+    turn = params.get("turn")
+    if turn:
+        return f"❌ [T{turn}] {text}"
+    return f"❌ {text}"
+
+
 # ---------------------------------------------------------------------------
 # Event type classification
 # ---------------------------------------------------------------------------
 
 _EVENT_TYPE_MAP: dict[str, str] = {
     "narrate": "narration",
+    "report_mistake": "mistake",
     "get_game_state": "state",
     "combat_play_card": "action",
     "combat_batch": "action",
@@ -1152,6 +1200,8 @@ def _classify_event(tool_name: str) -> str:
 _BASE_NARRATORS: dict[str, Any] = {
     # AI narration (pass-through)
     "narrate": _narrate_ai_narration,
+    # Mistake reports
+    "report_mistake": _narrate_mistake,
     # State queries
     "get_game_state": _narrate_get_state,
     # Combat

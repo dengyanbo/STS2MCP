@@ -527,7 +527,7 @@ class GameLogger:
         hp_start = first.get("player_hp") or 0
         hp_end = last.get("player_hp") or 0
         self._stats["total_damage_taken"] += max(0, hp_start - hp_end)
-        self._stats["total_turns"] += last.get("turn", 0)
+        self._stats["total_turns"] += int(last.get("turn", 0))
 
         self._combat_entries.clear()
         self._combat_turn_logged = -1

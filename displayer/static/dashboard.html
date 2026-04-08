@@ -191,29 +191,29 @@
   }
 
   #current-thinking .thinking-content {
-    background: linear-gradient(135deg, #122040 0%, #1a2d50 100%);
-    border: 1px solid var(--blue);
-    border-left: 3px solid var(--blue);
+    background: #fff;
+    border: 1px solid #ccc;
+    border-left: 3px solid #888;
     border-radius: 8px;
     padding: 14px 16px;
     font-size: 14.5px;
     line-height: 1.85;
     word-wrap: break-word;
-    color: #e8edf5;
+    color: #222;
   }
 
-  /* Structured thinking section headers */
+  /* Structured thinking section headers (white-gray theme) */
   .thinking-section-header {
     font-weight: 700;
     display: block;
     margin-top: 6px;
   }
   .thinking-section-header:first-child { margin-top: 0; }
-  .section-situation { color: var(--blue); }
-  .section-options { color: var(--cyan); }
-  .section-evaluate { color: var(--yellow); }
-  .section-decision { color: var(--green); }
-  .section-risk { color: var(--red); }
+  .section-situation { color: #2563eb; }
+  .section-options { color: #0891b2; }
+  .section-evaluate { color: #b45309; }
+  .section-decision { color: #15803d; }
+  .section-risk { color: #dc2626; }
 
   #current-thinking .thinking-time {
     font-size: 11px;
@@ -392,10 +392,70 @@
   .empty-state .icon { font-size: 48px; }
   .empty-state p { font-size: 14px; max-width: 300px; }
 
+  /* ===== Mistakes panel ===== */
+  #mistakes-panel {
+    max-height: 30%;
+    overflow-y: auto;
+    border-bottom: 1px solid var(--border);
+    background: #1a1020;
+    flex-shrink: 0;
+  }
+
+  #mistakes-panel .panel-header {
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--red);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  #mistakes-panel .panel-header .badge {
+    background: var(--red);
+    color: #fff;
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-weight: 700;
+  }
+
+  .mistake-item {
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    line-height: 1.5;
+    color: #e8c0c0;
+    animation: fadeIn 0.2s ease;
+  }
+
+  .mistake-item .mistake-turn {
+    font-weight: 700;
+    color: var(--red);
+    margin-right: 6px;
+  }
+
+  .mistake-item .mistake-time {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 2px;
+    display: block;
+  }
+
+  .mistake-empty {
+    padding: 12px 14px;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: center;
+  }
+
   /* ===== New message indicators ===== */
   .new-msg-btn {
     position: absolute;
-    bottom: 16px;
+    top: 16px;
     left: 50%;
     transform: translateX(-50%);
     background: var(--blue);
@@ -419,19 +479,25 @@
   /* Scrollbar styling */
   #messages::-webkit-scrollbar,
   #thinking-history::-webkit-scrollbar,
-  #current-thinking::-webkit-scrollbar { width: 6px; }
+  #current-thinking::-webkit-scrollbar,
+  #mistakes-panel::-webkit-scrollbar { width: 6px; }
   #messages::-webkit-scrollbar-track,
   #thinking-history::-webkit-scrollbar-track,
-  #current-thinking::-webkit-scrollbar-track { background: transparent; }
+  #current-thinking::-webkit-scrollbar-track,
+  #mistakes-panel::-webkit-scrollbar-track { background: transparent; }
   #messages::-webkit-scrollbar-thumb,
   #thinking-history::-webkit-scrollbar-thumb,
-  #current-thinking::-webkit-scrollbar-thumb {
+  #current-thinking::-webkit-scrollbar-thumb,
+  #mistakes-panel::-webkit-scrollbar-thumb {
     background: var(--border);
     border-radius: 3px;
   }
   #messages::-webkit-scrollbar-thumb:hover,
   #thinking-history::-webkit-scrollbar-thumb:hover,
-  #current-thinking::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+  #current-thinking::-webkit-scrollbar-thumb:hover,
+  #mistakes-panel::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+  /* Thinking-panel current-thinking scrollbar (dark bg, no override needed) */
 
   /* Resize handle between panels */
   #panel-resize {
@@ -501,20 +567,26 @@
     <div id="thinking-history">
       <div class="label">思考历史</div>
     </div>
-    <button class="new-msg-btn" id="newThinkingBtn" onclick="jumpToThinkingBottom()">⬇ <span id="newThinkingCount">0</span> 条新思考</button>
+    <button class="new-msg-btn" id="newThinkingBtn" onclick="jumpToThinkingTop()">⬆ <span id="newThinkingCount">0</span> 条新思考</button>
   </div>
 
   <div id="panel-resize"></div>
 
   <!-- Right: Action Feed -->
   <div id="action-panel">
+    <div id="mistakes-panel">
+      <div class="panel-header">❌ 失误榜 <span class="badge" id="mistakesBadge" style="display:none">0</span></div>
+      <div id="mistakes-list">
+        <div class="mistake-empty" id="mistakesEmpty">本场战斗暂无失误</div>
+      </div>
+    </div>
     <div id="messages">
       <div class="empty-state" id="emptyState">
         <div class="icon">🎮</div>
         <p>等待 AI 开始游戏...<br>操作记录将实时显示在这里。</p>
       </div>
     </div>
-    <button class="new-msg-btn" id="newActionBtn" onclick="jumpToActionBottom()">⬇ <span id="newActionCount">0</span> 条新操作</button>
+    <button class="new-msg-btn" id="newActionBtn" onclick="jumpToActionTop()">⬆ <span id="newActionCount">0</span> 条新操作</button>
   </div>
 </div>
 
@@ -527,6 +599,12 @@ const thinkingEmpty = document.getElementById('thinkingEmpty');
 const statusDot = document.getElementById('statusDot');
 const statusText = document.getElementById('statusText');
 const emptyState = document.getElementById('emptyState');
+
+// Mistakes panel elements
+const mistakesList = document.getElementById('mistakes-list');
+const mistakesEmpty = document.getElementById('mistakesEmpty');
+const mistakesBadge = document.getElementById('mistakesBadge');
+let mistakeCount = 0;
 
 // Status bar elements
 const statHpVal = document.getElementById('statHpVal');
@@ -587,12 +665,13 @@ document.addEventListener('mouseup', () => {
   }
 });
 
-// Detect if user scrolled up to pause auto-scroll (action feed)
+// Detect if user scrolled away from top to pause auto-scroll (action feed)
+// With column layout + prepend, scrollTop ≈ 0 means at newest (top)
 messagesEl.addEventListener('scroll', () => {
   const threshold = 50;
-  const atBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < threshold;
-  autoScroll = atBottom;
-  if (atBottom) {
+  const atTop = messagesEl.scrollTop < threshold;
+  autoScroll = atTop;
+  if (atTop) {
     missedActionCount = 0;
     newActionBtn.classList.remove('visible');
   }
@@ -601,9 +680,9 @@ messagesEl.addEventListener('scroll', () => {
 // Auto-scroll for thinking history
 thinkingHistoryEl.addEventListener('scroll', () => {
   const threshold = 50;
-  const atBottom = thinkingHistoryEl.scrollHeight - thinkingHistoryEl.scrollTop - thinkingHistoryEl.clientHeight < threshold;
-  autoScrollThinking = atBottom;
-  if (atBottom) {
+  const atTop = thinkingHistoryEl.scrollTop < threshold;
+  autoScrollThinking = atTop;
+  if (atTop) {
     missedThinkingCount = 0;
     newThinkingBtn.classList.remove('visible');
   }
@@ -611,28 +690,28 @@ thinkingHistoryEl.addEventListener('scroll', () => {
 
 function scrollToBottom() {
   if (autoScroll) {
-    messagesEl.scrollTop = messagesEl.scrollHeight;
+    messagesEl.scrollTop = 0; // top = newest with prepend
   }
 }
 
 function scrollThinkingToBottom() {
   if (autoScrollThinking) {
-    thinkingHistoryEl.scrollTop = thinkingHistoryEl.scrollHeight;
+    thinkingHistoryEl.scrollTop = 0; // top = newest with prepend
   }
 }
 
-function jumpToActionBottom() {
+function jumpToActionTop() {
   autoScroll = true;
   missedActionCount = 0;
   newActionBtn.classList.remove('visible');
-  messagesEl.scrollTop = messagesEl.scrollHeight;
+  messagesEl.scrollTop = 0;
 }
 
-function jumpToThinkingBottom() {
+function jumpToThinkingTop() {
   autoScrollThinking = true;
   missedThinkingCount = 0;
   newThinkingBtn.classList.remove('visible');
-  thinkingHistoryEl.scrollTop = thinkingHistoryEl.scrollHeight;
+  thinkingHistoryEl.scrollTop = 0;
 }
 
 function formatTime(ts) {
@@ -644,7 +723,8 @@ function trimOldMessages() {
   const msgs = messagesEl.querySelectorAll('.message');
   const overflow = msgs.length - MAX_DOM_MESSAGES;
   if (overflow > 0) {
-    for (let i = 0; i < overflow; i++) {
+    // Oldest are at the bottom = last DOM children (prepend puts newest first)
+    for (let i = msgs.length - 1; i >= msgs.length - overflow; i--) {
       msgs[i].remove();
     }
   }
@@ -654,7 +734,7 @@ function trimThinkingHistory() {
   const items = thinkingHistoryEl.querySelectorAll('.thinking-history-item');
   const overflow = items.length - MAX_THINKING_HISTORY;
   if (overflow > 0) {
-    for (let i = 0; i < overflow; i++) {
+    for (let i = items.length - 1; i >= items.length - overflow; i--) {
       items[i].remove();
     }
   }
@@ -718,7 +798,7 @@ function archiveCurrentThinking() {
 
   item.appendChild(textSpan);
   item.appendChild(timeSpan);
-  thinkingHistoryEl.appendChild(item);
+  thinkingHistoryEl.prepend(item); // prepend = newest at top
 
   trimThinkingHistory();
   scrollThinkingToBottom();
@@ -809,10 +889,21 @@ function updateStatusBar(stateData) {
     statGoldVal.textContent = gold;
   }
 
-  // Deck size
-  const deck = player.deck;
-  if (Array.isArray(deck)) {
-    statDeckVal.textContent = deck.length;
+  // Deck size — compute from pile counts during combat, or from deck_size if available
+  const deckSize = player.deck_size;
+  if (deckSize != null) {
+    statDeckVal.textContent = deckSize;
+  } else if (Array.isArray(player.deck)) {
+    statDeckVal.textContent = player.deck.length;
+  } else {
+    // Compute from combat piles: draw + discard + exhaust + hand
+    const draw = player.draw_pile_count;
+    const discard = player.discard_pile_count;
+    const exhaust = player.exhaust_pile_count;
+    const hand = Array.isArray(player.hand) ? player.hand.length : 0;
+    if (draw != null && discard != null) {
+      statDeckVal.textContent = draw + discard + (exhaust || 0) + hand;
+    }
   }
 
   // Scene label
@@ -820,13 +911,55 @@ function updateStatusBar(stateData) {
 }
 
 // --- Message creation (instant render, no typing animation) ---
+function addMistakeItem(event) {
+  if (mistakesEmpty && mistakesEmpty.parentNode) {
+    mistakesEmpty.remove();
+  }
+  mistakeCount++;
+  mistakesBadge.textContent = mistakeCount;
+  mistakesBadge.style.display = 'inline';
+
+  const item = document.createElement('div');
+  item.className = 'mistake-item';
+
+  // Parse turn info from raw_data
+  let turnLabel = '';
+  if (event.raw_data) {
+    try {
+      const rd = typeof event.raw_data === 'string' ? JSON.parse(event.raw_data) : event.raw_data;
+      const t = rd.turn || (rd.params && rd.params.turn);
+      if (t) turnLabel = `T${t} `;
+    } catch (e) {}
+  }
+
+  const turnSpan = document.createElement('span');
+  turnSpan.className = 'mistake-turn';
+  turnSpan.textContent = turnLabel;
+
+  const textNode = document.createTextNode(event.text);
+  const timeSpan = document.createElement('span');
+  timeSpan.className = 'mistake-time';
+  timeSpan.textContent = formatTime(event.timestamp);
+
+  item.appendChild(turnSpan);
+  item.appendChild(textNode);
+  item.appendChild(timeSpan);
+  mistakesList.prepend(item); // newest on top
+}
+
 function createMessageEl(event) {
-  // Update status bar from state events
-  if (event.event_type === 'state' && event.raw_data) {
+  // Update status bar from state events AND action events with snapshots
+  if (event.raw_data) {
     try {
       const rd = typeof event.raw_data === 'string' ? JSON.parse(event.raw_data) : event.raw_data;
       if (rd.state_snapshot) updateStatusBar(rd.state_snapshot);
     } catch (e) {}
+  }
+
+  // Route mistake events to the mistakes panel
+  if (event.event_type === 'mistake') {
+    addMistakeItem(event);
+    return;
   }
 
   // Route thinking/narration events to the thinking panel
@@ -854,12 +987,12 @@ function createMessageEl(event) {
 
   div.appendChild(content);
   div.appendChild(time);
-  messagesEl.appendChild(div);
+  messagesEl.prepend(div); // prepend = newest at top
 
   trimOldMessages();
 
   if (autoScroll) {
-    messagesEl.scrollTop = messagesEl.scrollHeight;
+    messagesEl.scrollTop = 0; // top = newest
   } else {
     missedActionCount++;
     newActionCount.textContent = missedActionCount;
@@ -949,6 +1082,17 @@ function connectSSE() {
     // Clear thinking history (keep label)
     const items = thinkingHistoryEl.querySelectorAll('.thinking-history-item');
     items.forEach(item => item.remove());
+
+    // Clear mistakes panel
+    mistakesList.innerHTML = '';
+    const emptyMistake = document.createElement('div');
+    emptyMistake.className = 'mistake-empty';
+    emptyMistake.id = 'mistakesEmpty';
+    emptyMistake.textContent = '本场战斗暂无失误';
+    mistakesList.appendChild(emptyMistake);
+    mistakeCount = 0;
+    mistakesBadge.textContent = '0';
+    mistakesBadge.style.display = 'none';
 
     // Reset all counters
     lastEventId = 0;

@@ -120,6 +120,11 @@ def _instrumented_tool(*deco_args, **deco_kwargs):
                     # Use the embedded game_state from the action response
                     # (stashed by _post/_mp_post). No extra HTTP call needed.
                     logger_state_obj = _action_game_state
+                    # Also send to displayer for status bar updates + narration
+                    if _action_game_state is not None:
+                        displayer_state = json.dumps(
+                            _action_game_state, ensure_ascii=False
+                        )
             except Exception:
                 pass
 
@@ -311,6 +316,54 @@ async def narrate(text: str) -> str:
     # This tool doesn't call the game — it only sends text to the displayer.
     # The _instrumented_tool wrapper handles the displayer notification.
     return "OK"
+
+
+@mcp.tool()
+async def report_mistake(text: str, turn: int | None = None) -> str:
+    """Report a gameplay mistake identified during post-turn analysis.
+
+    Call this at the start of each combat turn (Step 0) to flag errors
+    from previous turns. The mistake will appear in the live dashboard's
+    dedicated mistakes panel.
+
+    Args:
+        text: Description of the mistake in natural Chinese. Include what
+              went wrong, what the correct play was, and estimated impact.
+              Example: "上回合应该先打痛击施加易伤再打重刀，损失约6点伤害"
+        turn: The turn number when the mistake occurred (optional).
+    """
+    return "OK"
+
+
+@mcp.tool()
+async def get_last_turn_summary() -> str:
+    """Get a structured summary of the last completed combat turn.
+
+    Returns detailed data about the previous turn including:
+    - Game state at turn start (hand, enemies, intents, HP, energy)
+    - All actions taken (cards played with names, potions used, targets)
+    - Game state at turn end (after enemy actions)
+    - HP/damage changes
+
+    Use this at the start of each combat turn to feed a sub-agent for
+    mistake analysis. The sub-agent can identify suboptimal plays like
+    wrong card order, wasted energy, incorrect targeting, etc.
+
+    Returns "No turn data" if no completed turn is available.
+    """
+    if not _displayer_enabled:
+        return "Displayer not enabled — turn tracking unavailable"
+    try:
+        async with httpx.AsyncClient(timeout=3, trust_env=False) as client:
+            r = await client.get(f"{_displayer_url}/api/last-turn")
+            r.raise_for_status()
+            data = r.json()
+            summary = data.get("summary")
+            if summary:
+                return summary
+            return "No turn data"
+    except Exception:
+        return "Failed to fetch turn data from displayer"
 
 
 @mcp.tool()
