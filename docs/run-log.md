@@ -208,3 +208,48 @@ Root causes:
 - **No AOE acquired** — skipped 突破 and other AOE options
 - **Entered floor 12 at 14 HP** — below survival threshold for any combat
 - **Campfire should have been Smith** — at floor 7 with 59 HP, resting was correct but we never got back above 50% anyway
+
+## Run #6
+
+- **Date:** 2026-04-08
+- **Character:** 铁甲战士 (Ironclad)
+- **Result:** ❌ Defeated at Act 1 Elite (Floor 15)
+- **Ascension:** 0
+- **Killed by:** 多尼斯异鸟 (Byrdonis) — 92HP, 领地意识(+1 Str/turn)
+
+### Deck (15 cards + 1 笨拙)
+- 打击 ×4, 防御 ×4, 痛击 (2), 无情猛攻 (2), 双重打击 (1), 旋风斩 (X), 耸肩无视 ×2 (1), 剑柄打击 (1), 地狱之刃 (1, 消耗), 笨拙 (0, 虚无)
+
+### Relics
+- 燃烧之血, 精准剪刀, 餐券, 意外光滑的石头
+
+### Potions (used in elite)
+- 复制药水 (duplicated 耸肩无视 for 18 block), 易伤药水 (3 vuln on Byrdonis)
+
+### Death Cause
+Entered Elite at 18HP (22.5%) — far below 70% threshold. Byrdonis 92HP with Territorial (+1 Str/turn) + 16-18 damage per turn was impossible to survive with 5HP by round 3. Path was completely linear with no alternative to avoid elite.
+
+Root causes:
+1. **Linear path** — chose route with only 1 option at each node, no way to skip elite
+2. **HP drain from multi-enemy fights** — Slithering Strangler's Constrict (3→6→9 DOT) + Fogmog's minion status card spam drained HP
+3. **Status card pollution** — 6+ 黏液 + 晕眩 diluted deck, reducing block card draw rate
+4. **No HP recovery sources** — only Burning Blood (+6/combat) and one rest site
+
+### Key Moments
+1. **涅奥 event (Floor 1):** Chose 精准剪刀 → free Strike removal. Excellent start.
+2. **Shop (Floor 5):** Bought 旋风斩 (AOE!) + 爆炸安瓿. Fixed Run #5's AOE weakness.
+3. **蛇行扼杀者 fight (Floor 11):** Constrict 3→6→9 DOT drained 30+ HP over the fight. Should have prioritized killing Strangler over small slimes.
+4. **雾菇 fight (Floor 12):** Eye With Teeth minion spammed 3 晕眩/turn. Free attack from 无情猛攻 saved the day.
+5. **Elite Byrdonis (Floor 15):** 18HP entry = death sentence. Used both potions but only dealt 30 damage before dying.
+
+### What Went Right
+- 旋风斩 solved group fight weakness from Run #5
+- 无情猛攻 + free attack combo consistently strong (18+ damage for 2 energy)
+- 复制药水 + 耸肩无视 = 18 block saved a lethal turn
+- Strict potion discipline — saved both potions for elite
+
+### What Went Wrong
+- **Path too linear** — no flexibility to avoid elite when HP was low
+- **Constrict DOT ignored** — should have killed Strangler ASAP instead of clearing small slimes first
+- **No energy generation** — 3 energy cap limited per-turn output
+- **Too many basic cards** — 4 Strikes + 4 Defends still in deck at Floor 15

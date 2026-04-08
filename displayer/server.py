@@ -47,6 +47,14 @@ async def handle_post_event(request: web.Request) -> web.Response:
     tool_name = data.get("tool", "unknown")
     params = data.get("params", {})
     result = data.get("result", "")
+    state_json = data.get("state")  # Optional JSON state for narration cache
+
+    # Parse state if it's a JSON string
+    if isinstance(state_json, str):
+        try:
+            state_json = json.loads(state_json)
+        except (json.JSONDecodeError, TypeError):
+            state_json = None
 
     # Emit a "thinking" event for the reason parameter (skip for narrate —
     # its text param IS the thinking content and already gets displayed).
@@ -60,7 +68,7 @@ async def handle_post_event(request: web.Request) -> web.Response:
             raw_data={"reason": reason},
         )
 
-    text, event_type = narration.narrate(tool_name, params, result)
+    text, event_type = narration.narrate(tool_name, params, result, state_data=state_json)
     if text is None:
         if reason_event:
             return web.json_response({"status": "ok", "event_id": reason_event.id})

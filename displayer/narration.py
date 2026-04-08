@@ -78,8 +78,16 @@ class NarrationEngine:
         self._last_error: str | None = None
         self._action_count: int = 0
 
-    def narrate(self, tool_name: str, params: dict, result: str) -> tuple[str | None, str]:
+    def narrate(self, tool_name: str, params: dict, result: str,
+                state_data: dict | None = None) -> tuple[str | None, str]:
         """Generate narration text and event type for a tool call.
+
+        Args:
+            state_data: Optional pre-parsed JSON game state. When provided
+                        (e.g. from the MCP server for markdown-format
+                        get_game_state calls), this is used to update the
+                        cached state so subsequent action narrations can
+                        resolve card/reward/relic names by index.
 
         Returns:
             (text, event_type) — text is None to suppress the event.
@@ -91,8 +99,11 @@ class NarrationEngine:
         if result_data and result_data.get("status") == "error":
             self._last_error = result_data.get("error", result_data.get("message", "未知错误"))
 
-        # Cache game state for context
-        if tool_name in ("get_game_state", "mp_get_game_state"):
+        # Cache game state for context — prefer externally-provided state,
+        # then fall back to parsing the result (for JSON-format responses).
+        if state_data and isinstance(state_data, dict):
+            self._last_state = state_data
+        elif tool_name in ("get_game_state", "mp_get_game_state"):
             if result_data:
                 self._last_state = result_data
 
@@ -487,6 +498,35 @@ def _narrate_rest_state(data: dict) -> str:
     return "\n".join(lines)
 
 
+def _resolve_shop_item(item: dict) -> tuple[str, str, str]:
+    """Extract name, description, and category label from a shop item.
+
+    Shop items use category-specific keys: card_name/relic_name/potion_name.
+    """
+    cat = item.get("category", "")
+    if cat == "card":
+        name = item.get("card_name", item.get("name", "???"))
+        desc = item.get("card_description", item.get("description", ""))
+        label = "卡牌"
+    elif cat == "relic":
+        name = item.get("relic_name", item.get("name", "???"))
+        desc = item.get("relic_description", item.get("description", ""))
+        label = "遗物"
+    elif cat == "potion":
+        name = item.get("potion_name", item.get("name", "???"))
+        desc = item.get("potion_description", item.get("description", ""))
+        label = "药水"
+    elif cat == "card_removal":
+        name = "移除卡牌"
+        desc = ""
+        label = "服务"
+    else:
+        name = item.get("name", "???")
+        desc = item.get("description", "")
+        label = _zh_item_type(item.get("type", cat))
+    return name, desc, label
+
+
 def _narrate_shop_state(data: dict) -> str:
     player = data.get("player", {})
     gold = player.get("gold", "?")
@@ -496,10 +536,14 @@ def _narrate_shop_state(data: dict) -> str:
     lines = [f"🛒 [ 商店 ] 持有金币: {gold}"]
     if items:
         for item in items:
-            name = item.get("name", "???")
+            name, desc, label = _resolve_shop_item(item)
             price = item.get("price", item.get("cost", "?"))
-            itype = _zh_item_type(item.get("type", ""))
-            lines.append(f"  • {name}（{price}金）[{itype}]")
+            stocked = item.get("is_stocked", True)
+            if not stocked:
+                continue  # Skip sold-out items
+            afford = item.get("can_afford", True)
+            suffix = "" if afford else " [买不起]"
+            lines.append(f"  • {name}（{price}金）[{label}]{suffix}")
     removal = shop.get("card_removal", {})
     if removal:
         cost = removal.get("cost", removal.get("price", "?"))
@@ -810,11 +854,9 @@ def _narrate_shop_buy(
         if isinstance(idx, int):
             for item in items:
                 if item.get("index") == idx:
-                    name = item.get("name", "???")
+                    name, desc, label = _resolve_shop_item(item)
                     price = item.get("price", item.get("cost", "?"))
-                    itype = _zh_item_type(item.get("type", ""))
-                    desc = item.get("description", "")
-                    lines = [f"🛒 购买: {name}（{price}金）[{itype}]"]
+                    lines = [f"🛒 购买: {name}（{price}金）[{label}]"]
                     if desc:
                         lines.append(f"  效果: {desc}")
                     lines.append(f"  剩余金币: {gold}")

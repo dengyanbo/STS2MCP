@@ -41,16 +41,25 @@ _game_logger: GameLogger | None = None
 # Displayer integration — fire-and-forget notifications to the dashboard
 # ---------------------------------------------------------------------------
 
-async def _notify_displayer(tool_name: str, params: dict, result: str) -> None:
-    """Post a tool-call event to the displayer dashboard (best-effort)."""
+async def _notify_displayer(
+    tool_name: str, params: dict, result: str,
+    state_json: str | None = None,
+) -> None:
+    """Post a tool-call event to the displayer dashboard (best-effort).
+
+    Args:
+        state_json: Optional JSON-format game state string for the displayer
+                    to cache.  Sent when get_game_state uses markdown format
+                    so the narration engine still has structured data.
+    """
     if not _displayer_enabled:
         return
     try:
+        payload: dict = {"tool": tool_name, "params": params, "result": result}
+        if state_json is not None:
+            payload["state"] = state_json
         async with httpx.AsyncClient(timeout=3, trust_env=False) as client:
-            await client.post(
-                f"{_displayer_url}/api/events",
-                json={"tool": tool_name, "params": params, "result": result},
-            )
+            await client.post(f"{_displayer_url}/api/events", json=payload)
     except Exception:
         pass  # Displayer is optional — never block gameplay
 
@@ -62,6 +71,12 @@ _orig_mcp_tool = mcp.tool
 # Tools that don't change game state — skip the extra JSON state fetch
 _LOGGER_READ_ONLY = frozenset({"narrate", "get_game_state", "mp_get_game_state"})
 
+# Stash for the last raw action response dict.
+# Used by _instrumented_tool to extract game_state from the action response
+# itself, eliminating a redundant (and potentially stale) extra HTTP call.
+# Safe because MCP tool calls are serial (no parallelism).
+_action_game_state: dict | None = None
+
 
 def _instrumented_tool(*deco_args, **deco_kwargs):
     orig_decorator = _orig_mcp_tool(*deco_args, **deco_kwargs)
@@ -69,28 +84,60 @@ def _instrumented_tool(*deco_args, **deco_kwargs):
     def wrapper(func):
         @functools.wraps(func)
         async def instrumented(**kwargs):
+            global _action_game_state
+
+            # Extract reason (display-only) before calling the game function
+            reason = kwargs.pop("reason", None)
+
+            # Reset stash before calling the tool function.
+            # _post/_mp_post will populate it from the action response.
+            _action_game_state = None
+
             result = await func(**kwargs)
 
-            # Displayer notification (fire-and-forget)
+            tool_name = func.__name__
+
+            # --- Extract state for displayer & logger --------------------
+            # Priority: embedded state from action response (set by _post)
+            # > extra fetch (only for get_game_state with markdown format).
+            # This eliminates the redundant extra HTTP call that previously
+            # raced with the game's state update.
+            displayer_state: str | None = None
+            logger_state_obj: dict | None = None
+
+            try:
+                if tool_name in ("get_game_state", "mp_get_game_state"):
+                    if kwargs.get("format") == "json":
+                        displayer_state = result  # already JSON string
+                        logger_state_obj = json.loads(result)
+                    else:
+                        # Fetch JSON for displayer state cache
+                        fetcher = _mp_get if tool_name == "mp_get_game_state" else _get
+                        raw = await fetcher({"format": "json"})
+                        displayer_state = raw
+                        logger_state_obj = json.loads(raw)
+                elif tool_name not in _LOGGER_READ_ONLY:
+                    # Use the embedded game_state from the action response
+                    # (stashed by _post/_mp_post). No extra HTTP call needed.
+                    logger_state_obj = _action_game_state
+            except Exception:
+                pass
+
+            # --- Displayer notification (fire-and-forget) ----------------
+            params_for_displayer = dict(kwargs)
+            if reason:
+                params_for_displayer["reason"] = reason
             asyncio.create_task(
-                _notify_displayer(func.__name__, dict(kwargs), result)
+                _notify_displayer(
+                    tool_name, params_for_displayer, result, displayer_state
+                )
             )
 
-            # Game logger — fetch JSON state for context
+            # --- Game logger ---------------------------------------------
             if _game_logger is not None:
-                state_json = None
-                tool_name = func.__name__
-                try:
-                    if tool_name == "get_game_state" and kwargs.get("format") == "json":
-                        state_json = json.loads(result)
-                    elif tool_name not in _LOGGER_READ_ONLY:
-                        raw = await _get({"format": "json"})
-                        state_json = json.loads(raw)
-                except Exception:
-                    pass
                 try:
                     _game_logger.log_tool_call(
-                        tool_name, dict(kwargs), result, state_json
+                        tool_name, dict(kwargs), result, logger_state_obj
                     )
                 except Exception:
                     pass  # Logger must never break gameplay
@@ -120,11 +167,18 @@ async def _get(params: dict | None = None) -> str:
 
 
 async def _post(body: dict) -> str:
+    global _action_game_state
     async with httpx.AsyncClient(timeout=10, trust_env=_trust_env) as client:
         r = await client.post(
             _sp_url(), json=body, params={"format": "markdown"}
         )
         r.raise_for_status()
+        # Stash the embedded game_state for the instrumented wrapper
+        try:
+            raw = json.loads(r.text)
+            _action_game_state = raw.get("game_state")
+        except (json.JSONDecodeError, TypeError):
+            pass
         return _format_action_response(r.text)
 
 
@@ -144,11 +198,18 @@ async def _mp_get(params: dict | None = None) -> str:
 
 
 async def _mp_post(body: dict) -> str:
+    global _action_game_state
     async with httpx.AsyncClient(timeout=10, trust_env=_trust_env) as client:
         r = await client.post(
             _mp_url(), json=body, params={"format": "markdown"}
         )
         r.raise_for_status()
+        # Stash the embedded game_state for the instrumented wrapper
+        try:
+            raw = json.loads(r.text)
+            _action_game_state = raw.get("game_state")
+        except (json.JSONDecodeError, TypeError):
+            pass
         return _format_action_response(r.text)
 
 
@@ -325,6 +386,7 @@ async def combat_end_turn() -> str:
     next player turn state, so you do NOT need to call get_game_state()
     afterwards.
     """
+    global _action_game_state
     try:
         result_text = await _post({"action": "end_turn"})
     except Exception as e:
@@ -343,11 +405,13 @@ async def combat_end_turn() -> str:
 
             # Combat ended → rewards, map, event, etc.
             if state_type not in ("monster", "elite", "boss"):
+                _action_game_state = data
                 return await _get({"format": "markdown"})
 
             # Still in combat — check if it's the player's turn again
             battle = data.get("battle", {})
             if battle.get("is_play_phase", False):
+                _action_game_state = data
                 return await _get({"format": "markdown"})
     except Exception:
         pass  # polling failed, return what we have
@@ -360,7 +424,7 @@ async def combat_end_turn() -> str:
 
 
 @mcp.tool()
-async def combat_batch(actions: list[dict]) -> str:
+async def combat_batch(actions: list[dict], reason: str | None = None) -> str:
     """[Combat] Execute multiple combat actions in a single call.
 
     Plays cards, uses potions, and optionally ends the turn — all in one
@@ -376,6 +440,8 @@ async def combat_batch(actions: list[dict]) -> str:
             - card_index: (play_card) 0-based index in current hand
             - target: (play_card/use_potion) entity_id if needed
             - slot: (use_potion) potion slot index
+
+        - reason: (combat_batch) Overall turn strategy explanation (shown on viewer dashboard)
 
     Example: [
         {"type": "use_potion", "slot": 0},
@@ -435,8 +501,10 @@ async def combat_batch(actions: list[dict]) -> str:
                 data = json.loads(raw)
                 st = data.get("state_type", "")
                 if st not in ("monster", "elite", "boss"):
+                    _action_game_state = data
                     break
                 if data.get("battle", {}).get("is_play_phase", False):
+                    _action_game_state = data
                     break
         except Exception:
             pass
@@ -490,7 +558,7 @@ async def combat_confirm_selection() -> str:
 
 
 @mcp.tool()
-async def rewards_claim(reward_index: int) -> str:
+async def rewards_claim(reward_index: int, reason: str | None = None) -> str:
     """[Rewards] Claim a reward from the post-combat rewards screen.
 
     Gold, potion, and relic rewards are claimed immediately.
@@ -498,6 +566,7 @@ async def rewards_claim(reward_index: int) -> str:
 
     Args:
         reward_index: 0-based index of the reward on the rewards screen.
+        reason: Brief explanation of why you're claiming this reward (shown on viewer dashboard).
 
     Note that claiming a reward may change the indices of remaining rewards, so refer to the latest game state for accurate indices.
     Claiming from right to left can help maintain more stable indices for remaining rewards, as rewards will always shift left to fill in gaps.
@@ -509,11 +578,12 @@ async def rewards_claim(reward_index: int) -> str:
 
 
 @mcp.tool()
-async def rewards_pick_card(card_index: int) -> str:
+async def rewards_pick_card(card_index: int, reason: str | None = None) -> str:
     """[Rewards] Select a card from the card reward selection screen.
 
     Args:
         card_index: 0-based index of the card to add to the deck.
+        reason: Brief explanation of why you chose this card (shown on viewer dashboard).
     """
     try:
         return await _post({"action": "select_card_reward", "card_index": card_index})
@@ -522,8 +592,12 @@ async def rewards_pick_card(card_index: int) -> str:
 
 
 @mcp.tool()
-async def rewards_skip_card() -> str:
-    """[Rewards] Skip the card reward without selecting a card."""
+async def rewards_skip_card(reason: str | None = None) -> str:
+    """[Rewards] Skip the card reward without selecting a card.
+
+    Args:
+        reason: Brief explanation of why you're skipping (shown on viewer dashboard).
+    """
     try:
         return await _post({"action": "skip_card_reward"})
     except Exception as e:
@@ -598,16 +672,35 @@ async def rewards_claim_all() -> str:
 
 
 @mcp.tool()
-async def map_choose_node(node_index: int) -> str:
+async def map_choose_node(node_index: int, reason: str | None = None) -> str:
     """[Map] Choose a map node to travel to.
 
     Args:
         node_index: 0-based index of the node from the next_options list.
+        reason: Brief explanation of why you chose this path (shown on viewer dashboard).
     """
+    global _action_game_state
     try:
-        return await _post({"action": "choose_map_node", "index": node_index})
+        result_text = await _post({"action": "choose_map_node", "index": node_index})
     except Exception as e:
         return _handle_error(e)
+
+    # Poll until the game transitions away from the map screen.
+    # The mod processes the node choice, but the new screen (combat, event,
+    # shop, etc.) may take time to load.  Similar to combat_end_turn polling.
+    try:
+        for _ in range(15):  # up to ~3s
+            await asyncio.sleep(0.2)
+            raw = await _get({"format": "json"})
+            data = json.loads(raw)
+            if data.get("state_type") != "map":
+                # Update stash with the post-transition state
+                _action_game_state = data
+                return await _get({"format": "markdown"})
+    except Exception:
+        pass  # polling failed — return what we have
+
+    return result_text
 
 
 # ---------------------------------------------------------------------------
@@ -616,11 +709,12 @@ async def map_choose_node(node_index: int) -> str:
 
 
 @mcp.tool()
-async def rest_choose_option(option_index: int) -> str:
+async def rest_choose_option(option_index: int, reason: str | None = None) -> str:
     """[Rest Site] Choose a rest site option (rest, smith, etc.).
 
     Args:
         option_index: 0-based index of the option from the rest site state.
+        reason: Brief explanation of your choice (shown on viewer dashboard).
     """
     try:
         return await _post({"action": "choose_rest_option", "index": option_index})
@@ -634,7 +728,7 @@ async def rest_choose_option(option_index: int) -> str:
 
 
 @mcp.tool()
-async def shop_purchase(item_index: int) -> str:
+async def shop_purchase(item_index: int, reason: str | None = None) -> str:
     """[Shop / Fake Merchant] Purchase an item from the shop.
 
     Works for both regular shops (state_type: shop) and the fake merchant
@@ -642,6 +736,7 @@ async def shop_purchase(item_index: int) -> str:
 
     Args:
         item_index: 0-based index of the item from the shop state.
+        reason: Brief explanation of why you're buying this (shown on viewer dashboard).
     """
     try:
         return await _post({"action": "shop_purchase", "index": item_index})
@@ -655,7 +750,7 @@ async def shop_purchase(item_index: int) -> str:
 
 
 @mcp.tool()
-async def event_choose_option(option_index: int) -> str:
+async def event_choose_option(option_index: int, reason: str | None = None) -> str:
     """[Event] Choose an event option.
 
     Works for both regular events and ancients (after dialogue ends).
@@ -663,6 +758,7 @@ async def event_choose_option(option_index: int) -> str:
 
     Args:
         option_index: 0-based index of the unlocked option.
+        reason: Brief explanation of why you chose this option (shown on viewer dashboard).
     """
     try:
         return await _post({"action": "choose_event_option", "index": option_index})
@@ -775,13 +871,14 @@ async def bundle_cancel_selection() -> str:
 
 
 @mcp.tool()
-async def relic_select(relic_index: int) -> str:
+async def relic_select(relic_index: int, reason: str | None = None) -> str:
     """[Relic Selection] Select a relic from the relic selection screen.
 
     Used when the game offers a choice of relics (e.g., boss relic rewards).
 
     Args:
         relic_index: 0-based index of the relic (as shown in game state).
+        reason: Brief explanation of why you chose this relic (shown on viewer dashboard).
     """
     try:
         return await _post({"action": "select_relic", "index": relic_index})
@@ -804,7 +901,7 @@ async def relic_skip() -> str:
 
 
 @mcp.tool()
-async def treasure_claim_relic(relic_index: int) -> str:
+async def treasure_claim_relic(relic_index: int, reason: str | None = None) -> str:
     """[Treasure] Claim a relic from the treasure chest.
 
     The chest is auto-opened when entering the treasure room.
@@ -812,6 +909,7 @@ async def treasure_claim_relic(relic_index: int) -> str:
 
     Args:
         relic_index: 0-based index of the relic (as shown in game state).
+        reason: Brief explanation (shown on viewer dashboard).
     """
     try:
         return await _post({"action": "claim_treasure_relic", "index": relic_index})
