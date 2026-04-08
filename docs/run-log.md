@@ -297,3 +297,51 @@ Root causes:
 - **No answer to 缠结** — need 0-cost attacks or skills that deal damage
 - **HP spiraled** — 48→38→26→18→12→4→0 across 3 fights with only Burning Blood for recovery
 - **Should have taken 放血 at shop** — 0 cost skill for +2 energy would bypass 缠结
+
+## Run #8
+
+- **Date:** 2026-04-08
+- **Character:** 铁甲战士 (Ironclad)
+- **Result:** ❌ Defeated at Act 1 Floor 15 (普通怪)
+- **Ascension:** 0
+- **Killed by:** 毛绒伏地虫 (Fuzzy Wurm Crawler) — 55HP, 7力量
+
+### Deck (14 cards)
+- 打击 ×4, 防御 ×3 (1 consumed by 烙印+), 防御+ ×1, 痛击+ (2), 武装+ (1), 飞剑回旋镖+(锋利附魔) (1), 双重打击 (1), 烙印+ (0), 被遗忘的仪式 (1), 拆卸 (1)
+
+### Relics
+- 燃烧之血, 金色珍珠, 战纹涂料, 灯笼
+
+### Potions (unused)
+- 镣铐药水 (saved for Boss, never used), 技能药水 (saved for Boss, never used)
+
+### Death Cause
+Entered Floor 15 at 26HP (dangerously low). Faced 缩小甲虫(39HP) + 毛绒伏地虫(55HP). Killed 缩小甲虫 in Round 3 but took cumulative damage. Round 4: 10HP, 毛绒伏地虫 had 7 Strength dealing 11/turn. Critical error in R4: combat_batch index confusion caused 武装+ to play instead of 打击 — no damage dealt, died to 11 damage.
+
+Root causes:
+1. **HP too low entering fights** — 26HP from accumulated damage across floors 11-13 without rest
+2. **Saved potions too aggressively** — 镣铐药水 could have saved the run if used on this fight
+3. **combat_batch index confusion** — after飞剑回旋镖 played, indices shifted; tried to play 打击 but hit 武装+ instead
+4. **Path had no escape** — forced into Monster→Monster→Unknown→Monster→RestSite→Boss with no recovery options
+
+### Key Moments
+1. **涅奥 (Floor 1):** Gold Pearl → 249g start. Excellent for shop.
+2. **Shop (Floor 5):** Removed Strike, bought 烙印(74g sale!), 力量药水, 双重打击. Perfect shopping.
+3. **Elite Byrdonis (Floor 7):** Used 力量药水 T1, killed in 4 rounds. Got 战纹涂料(+2 skill upgrades).
+4. **Event (Floor 9):** Upgraded 烙印→烙印+(2力量!). Huge power spike.
+5. **Treasure (Floor 10):** 灯笼(+1能量T1). Core relic.
+6. **烙印+被遗忘的仪式 combo (Floor 15):** Finally executed — 0费消耗→+3能量=7能量T1. Incredible but too late.
+7. **Fatal error (Floor 15 R4):** Index confusion in combat_batch killed the run.
+
+### What Went Right
+- 金色珍珠 into shop = incredible early economy (移除+烙印+力量药水+双重打击)
+- 烙印+ + 被遗忘的仪式 combo identified and executed
+- 拆卸 acquisition — perfect synergy with 痛击+ (易伤→双倍拆卸)
+- 飞剑回旋镖 + 锋利附魔 = 5×3 = 15 damage per energy (later 7×4 with upgrades)
+- 武装+ upgrading all hand cards = massive value
+
+### What Went Wrong
+- **Saved potions for Boss while dying to普通怪** — mirrors Run #1/#5 mistake
+- **HP management failure** — 73→32→56→26 across Act 1, never stabilized
+- **No耸肩无视 again** — recurring problem, need to prioritize block cards
+- **combat_batch unreliable with draw effects** — must play cards individually after indices shift

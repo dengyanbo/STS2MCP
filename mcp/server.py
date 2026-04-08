@@ -423,6 +423,21 @@ async def combat_end_turn() -> str:
         return result_text
 
 
+def _extract_hand(state: dict) -> list[dict]:
+    """Extract hand card list from a game state dict."""
+    return state.get("battle", {}).get("hand", [])
+
+
+def _find_card_in_hand(
+    hand: list[dict], card_id: str, is_upgraded: bool,
+) -> int | None:
+    """Return the index field of the first matching card in *hand*."""
+    for card in hand:
+        if card.get("id") == card_id and card.get("is_upgraded") == is_upgraded:
+            return card.get("index")
+    return None
+
+
 @mcp.tool()
 async def combat_batch(actions: list[dict], reason: str | None = None) -> str:
     """[Combat] Execute multiple combat actions in a single call.
@@ -430,9 +445,11 @@ async def combat_batch(actions: list[dict], reason: str | None = None) -> str:
     Plays cards, uses potions, and optionally ends the turn — all in one
     round-trip. Each action is executed sequentially with a short delay
     to let the game process animations. Card indices are based on the
-    hand state at execution time, NOT the original state — the tool
-    re-reads the hand after each action to resolve correct indices by
-    card name.
+    hand state **at the time combat_batch is called** — the tool
+    snapshots the hand, identifies each card by (id, upgraded), and
+    re-resolves the correct index in the live hand before every play.
+    This prevents wrong-card bugs caused by index shifting after draws
+    or earlier plays.
 
     Args:
         actions: Ordered list of action dicts. Each dict has:
@@ -452,14 +469,71 @@ async def combat_batch(actions: list[dict], reason: str | None = None) -> str:
     """
     results: list[str] = []
 
+    # ------------------------------------------------------------------
+    # 1. Snapshot the initial hand so we can identify cards by identity
+    #    rather than by fragile positional index.
+    # ------------------------------------------------------------------
+    initial_hand: list[dict] = []
+    try:
+        raw_state = await _get({"format": "json"})
+        initial_state = json.loads(raw_state)
+        initial_hand = _extract_hand(initial_state)
+    except Exception:
+        pass  # fallback: direct index mode (original behaviour)
+
+    # Pre-resolve: for each play_card action, record the card identity
+    # (id + is_upgraded) that the caller intended, looked up by index in
+    # the initial hand snapshot.
+    _intended: list[dict | None] = []
+    for action in actions:
+        if action.get("type") == "play_card":
+            idx = action.get("card_index", -1)
+            if initial_hand and 0 <= idx < len(initial_hand):
+                c = initial_hand[idx]
+                _intended.append({
+                    "id": c.get("id", ""),
+                    "name": c.get("name", ""),
+                    "is_upgraded": c.get("is_upgraded", False),
+                    "original_index": idx,
+                })
+            else:
+                # Index out of range or no snapshot — will use raw index
+                _intended.append(None)
+        else:
+            _intended.append(None)
+
+    # Live hand state — updated after each successful action from the
+    # game_state embedded in the action response.
+    current_hand: list[dict] = list(initial_hand)
+
     for i, action in enumerate(actions):
         action_type = action.get("type", "")
 
         try:
             if action_type == "play_card":
+                intended = _intended[i]
+                raw_index = action["card_index"]
+
+                if intended is not None and current_hand:
+                    resolved = _find_card_in_hand(
+                        current_hand, intended["id"], intended["is_upgraded"],
+                    )
+                    if resolved is not None:
+                        use_index = resolved
+                    else:
+                        # Card no longer in hand (maybe already played/discarded)
+                        results.append(
+                            f"[{i}] ✗ Card '{intended['name']}' (id={intended['id']}) "
+                            f"not found in current hand"
+                        )
+                        break
+                else:
+                    # No snapshot available — fall back to raw index
+                    use_index = raw_index
+
                 body: dict = {
                     "action": "play_card",
-                    "card_index": action["card_index"],
+                    "card_index": use_index,
                 }
                 if "target" in action:
                     body["target"] = action["target"]
@@ -478,8 +552,14 @@ async def combat_batch(actions: list[dict], reason: str | None = None) -> str:
             data = json.loads(raw)
             status = data.get("status", "error")
             msg = data.get("message", data.get("error", ""))
+
             if status == "ok":
                 results.append(f"[{i}] ✓ {msg}")
+                # Update current hand from the embedded game_state so
+                # the next play_card can resolve against fresh indices.
+                gs = data.get("game_state")
+                if isinstance(gs, dict):
+                    current_hand = _extract_hand(gs)
             else:
                 results.append(f"[{i}] ✗ {msg}")
                 break  # stop on first error

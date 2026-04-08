@@ -374,13 +374,14 @@ public static partial class McpMod
 
                     // Generate contextual hints
                     var hints = new List<string>();
+                    int unblocked = Math.Max(0, totalIncoming - currentBlock);
+
                     if (!anyAttacking)
                         hints.Add("No enemies attacking — go all-out offense, skip blocking.");
                     else if (totalIncoming > 0 && totalIncoming <= currentBlock)
                         hints.Add($"Already have enough block ({currentBlock}) for incoming {totalIncoming} — focus on damage.");
                     else if (totalIncoming > 0)
                     {
-                        int unblocked = totalIncoming - currentBlock;
                         int hpAfter = player.Creature.CurrentHp - unblocked;
                         if (hpAfter <= 0)
                             hints.Add($"LETHAL DANGER: {unblocked} unblocked damage will kill you! Block or kill enemies NOW.");
@@ -408,6 +409,35 @@ public static partial class McpMod
                                     break;
                                 }
                             }
+                        }
+                    }
+
+                    // Wasted energy hint: warn if there are playable cards the player could still use
+                    if (pcs != null && pcs.Energy > 0)
+                    {
+                        var playableNames = new List<string>();
+                        foreach (var card in pcs.Hand.Cards)
+                        {
+                            if (card.CanPlay(out _, out _))
+                                playableNames.Add(SafeGetText(() => card.Title) ?? card.Id.Entry);
+                        }
+                        if (playableNames.Count > 0)
+                        {
+                            bool hasBlockCard = false;
+                            foreach (var card in pcs.Hand.Cards)
+                            {
+                                if (card.CanPlay(out _, out _) && card.Type == CardType.Skill)
+                                {
+                                    hasBlockCard = true;
+                                    break;
+                                }
+                            }
+
+                            string cardList = string.Join(", ", playableNames);
+                            if (anyAttacking && unblocked > 0 && hasBlockCard)
+                                hints.Add($"⚠️ WASTED ENERGY: {pcs.Energy} energy left with {unblocked} unblocked damage! Playable cards: [{cardList}] — play block cards before ending turn!");
+                            else
+                                hints.Add($"⚠️ WASTED ENERGY: {pcs.Energy} energy remaining. Playable cards: [{cardList}] — use energy before ending turn!");
                         }
                     }
 
