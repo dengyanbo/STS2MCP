@@ -279,7 +279,7 @@ public static partial class McpMod
 
         var button = buttons[index];
         string title = SafeGetText(() => button.Option.Title) ?? "option";
-        button.ForceClick();
+        SafeForceClick(button);
 
         return new Dictionary<string, object?>
         {
@@ -302,7 +302,7 @@ public static partial class McpMod
         if (hitbox == null || !hitbox.Visible || !hitbox.IsEnabled)
             return Error("Dialogue hitbox not available - dialogue may have ended");
 
-        hitbox.ForceClick();
+        SafeForceClick(hitbox);
 
         return new Dictionary<string, object?>
         {
@@ -331,7 +331,7 @@ public static partial class McpMod
 
         var button = buttons[index];
         string optionName = SafeGetText(() => button.Option.Title) ?? button.Option.OptionId;
-        button.ForceClick();
+        SafeForceClick(button);
 
         return new Dictionary<string, object?>
         {
@@ -370,7 +370,7 @@ public static partial class McpMod
                         {
                             var btn = fmNode.MerchantButton;
                             if (btn != null && btn.Visible && btn.IsEnabled)
-                                btn.ForceClick();
+                                SafeForceClick(btn);
                         }
                     }
                 }
@@ -470,7 +470,7 @@ public static partial class McpMod
         else if (reward is CardReward)
             rewardDesc = "card (opens card selection)";
 
-        button.ForceClick();
+        SafeForceClick(button);
 
         return new Dictionary<string, object?>
         {
@@ -515,7 +515,7 @@ public static partial class McpMod
         if (altButtons.Count == 0)
             return Error("No skip option available on this card reward");
 
-        altButtons[0].ForceClick();
+        SafeForceClick(altButtons[0]);
 
         return new Dictionary<string, object?>
         {
@@ -533,7 +533,7 @@ public static partial class McpMod
             var btn = FindFirst<NProceedButton>(rewardsScreen);
             if (btn is { IsEnabled: true })
             {
-                btn.ForceClick();
+                SafeForceClick(btn);
                 return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from rewards" };
             }
         }
@@ -541,7 +541,7 @@ public static partial class McpMod
         // Try rest site
         if (NRestSiteRoom.Instance is { } restRoom && restRoom.ProceedButton.IsEnabled)
         {
-            restRoom.ProceedButton.ForceClick();
+            SafeForceClick(restRoom.ProceedButton);
             return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from rest site" };
         }
 
@@ -552,11 +552,11 @@ public static partial class McpMod
             {
                 var backBtn = FindFirst<NBackButton>(merchRoom);
                 if (backBtn is { IsEnabled: true })
-                    backBtn.ForceClick();
+                    SafeForceClick(backBtn);
             }
             if (merchRoom.ProceedButton.IsEnabled)
             {
-                merchRoom.ProceedButton.ForceClick();
+                SafeForceClick(merchRoom.ProceedButton);
                 return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from shop" };
             }
         }
@@ -572,12 +572,12 @@ public static partial class McpMod
                 {
                     var backBtn = FindFirst<NBackButton>(fmNode);
                     if (backBtn is { IsEnabled: true })
-                        backBtn.ForceClick();
+                        SafeForceClick(backBtn);
                 }
                 var proceedBtn = FindFirst<NProceedButton>(fmNode);
                 if (proceedBtn is { IsEnabled: true })
                 {
-                    proceedBtn.ForceClick();
+                    SafeForceClick(proceedBtn);
                     return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from fake merchant" };
                 }
             }
@@ -588,7 +588,7 @@ public static partial class McpMod
             ((Godot.SceneTree)Godot.Engine.GetMainLoop()).Root);
         if (treasureUI != null && treasureUI.ProceedButton.IsEnabled)
         {
-            treasureUI.ProceedButton.ForceClick();
+            SafeForceClick(treasureUI.ProceedButton);
             return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from treasure room" };
         }
 
@@ -663,7 +663,7 @@ public static partial class McpMod
                               ?? container.GetNodeOrNull<NConfirmButton>("%PreviewConfirm");
                 if (confirm is { IsEnabled: true })
                 {
-                    confirm.ForceClick();
+                    SafeForceClick(confirm);
                     return new Dictionary<string, object?>
                     {
                         ["status"] = "ok",
@@ -678,7 +678,7 @@ public static partial class McpMod
                           ?? screen.GetNodeOrNull<NConfirmButton>("%Confirm");
         if (mainConfirm is { IsEnabled: true })
         {
-            mainConfirm.ForceClick();
+            SafeForceClick(mainConfirm);
             return new Dictionary<string, object?>
             {
                 ["status"] = "ok",
@@ -694,7 +694,7 @@ public static partial class McpMod
         {
             if (btn.IsEnabled && btn.IsVisibleInTree())
             {
-                btn.ForceClick();
+                SafeForceClick(btn);
                 return new Dictionary<string, object?>
                 {
                     ["status"] = "ok",
@@ -716,7 +716,7 @@ public static partial class McpMod
             var skipButton = chooseScreen.GetNodeOrNull<NClickableControl>("SkipButton");
             if (skipButton is { IsEnabled: true })
             {
-                skipButton.ForceClick();
+                SafeForceClick(skipButton);
                 return new Dictionary<string, object?>
                 {
                     ["status"] = "ok",
@@ -739,7 +739,7 @@ public static partial class McpMod
                                 ?? container.GetNodeOrNull<NBackButton>("%PreviewCancel");
                 if (cancelBtn is { IsEnabled: true })
                 {
-                    cancelBtn.ForceClick();
+                    SafeForceClick(cancelBtn);
                     return new Dictionary<string, object?>
                     {
                         ["status"] = "ok",
@@ -753,7 +753,7 @@ public static partial class McpMod
         var closeButton = screen.GetNodeOrNull<NBackButton>("%Close");
         if (closeButton is { IsEnabled: true })
         {
-            closeButton.ForceClick();
+            SafeForceClick(closeButton);
             return new Dictionary<string, object?>
             {
                 ["status"] = "ok",
@@ -782,7 +782,7 @@ public static partial class McpMod
         if (index < 0 || index >= bundles.Count)
             return Error($"Bundle index {index} out of range ({bundles.Count} bundles available)");
 
-        bundles[index].Hitbox.ForceClick();
+        SafeForceClick(bundles[index].Hitbox);
         return new Dictionary<string, object?>
         {
             ["status"] = "ok",
@@ -800,7 +800,7 @@ public static partial class McpMod
         if (confirmButton is not { IsEnabled: true })
             return Error("Bundle confirm button is not enabled");
 
-        confirmButton.ForceClick();
+        SafeForceClick(confirmButton);
         return new Dictionary<string, object?>
         {
             ["status"] = "ok",
@@ -818,7 +818,7 @@ public static partial class McpMod
         if (cancelButton is not { IsEnabled: true })
             return Error("Bundle cancel button is not enabled");
 
-        cancelButton.ForceClick();
+        SafeForceClick(cancelButton);
         return new Dictionary<string, object?>
         {
             ["status"] = "ok",
@@ -863,7 +863,7 @@ public static partial class McpMod
         if (confirmBtn == null || !confirmBtn.IsEnabled)
             return Error("Confirm button is not enabled - select more cards first");
 
-        confirmBtn.ForceClick();
+        SafeForceClick(confirmBtn);
 
         return new Dictionary<string, object?>
         {
@@ -889,7 +889,7 @@ public static partial class McpMod
 
         var holder = holders[index];
         string relicName = SafeGetText(() => holder.Relic?.Model?.Title) ?? "unknown";
-        holder.ForceClick();
+        SafeForceClick(holder);
 
         return new Dictionary<string, object?>
         {
@@ -908,7 +908,7 @@ public static partial class McpMod
         if (skipButton is not { IsEnabled: true })
             return Error("No skip option available");
 
-        skipButton.ForceClick();
+        SafeForceClick(skipButton);
 
         return new Dictionary<string, object?>
         {
@@ -942,7 +942,7 @@ public static partial class McpMod
 
         var holder = holders[index];
         string relicName = SafeGetText(() => holder.Relic?.Model?.Title) ?? "unknown";
-        holder.ForceClick();
+        SafeForceClick(holder);
 
         return new Dictionary<string, object?>
         {
@@ -973,7 +973,7 @@ public static partial class McpMod
         if (!button.Visible || !button.IsEnabled)
             return Error($"Crystal Sphere tool '{tool}' is not available");
 
-        button.ForceClick();
+        SafeForceClick(button);
         return new Dictionary<string, object?>
         {
             ["status"] = "ok",
@@ -1020,7 +1020,7 @@ public static partial class McpMod
         if (proceedButton is not { IsEnabled: true })
             return Error("Crystal Sphere proceed button is not enabled");
 
-        proceedButton.ForceClick();
+        SafeForceClick(proceedButton);
         return new Dictionary<string, object?>
         {
             ["status"] = "ok",

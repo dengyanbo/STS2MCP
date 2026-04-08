@@ -97,6 +97,18 @@ public static partial class McpMod
         return new Dictionary<string, object?> { ["status"] = "error", ["error"] = message };
     }
 
+    /// <summary>
+    /// Calls ForceClick() on a control while preserving the OS mouse cursor position.
+    /// Godot's ForceClick() internally creates an InputEventMouseButton at (0,0),
+    /// which warps the system cursor to the top-left corner of the screen.
+    /// </summary>
+    internal static void SafeForceClick(NClickableControl control)
+    {
+        var savedPos = DisplayServer.MouseGetPosition();
+        control.ForceClick();
+        DisplayServer.WarpMouse(savedPos);
+    }
+
     internal static List<T> FindAll<T>(Node start) where T : Node
     {
         var list = new List<T>();

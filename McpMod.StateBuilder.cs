@@ -770,7 +770,7 @@ public static partial class McpMod
                 // (disables proceed button, wires InventoryClosed callback, etc.)
                 var merchantButton = fakeMerchantNode.MerchantButton;
                 if (merchantButton != null && merchantButton.Visible && merchantButton.IsEnabled)
-                    merchantButton.ForceClick();
+                    SafeForceClick(merchantButton);
             }
         }
 
@@ -1536,7 +1536,7 @@ public static partial class McpMod
         var chestButton = treasureUI.GetNodeOrNull<NClickableControl>("Chest");
         if (chestButton is { IsEnabled: true })
         {
-            chestButton.ForceClick();
+            SafeForceClick(chestButton);
             state["message"] = "Opening chest...";
             return state;
         }
