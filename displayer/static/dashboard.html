@@ -35,7 +35,7 @@
   header {
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border);
-    padding: 12px 20px;
+    padding: 10px 20px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -90,11 +90,64 @@
     border-color: var(--accent);
   }
 
+  /* ===== Status bar ===== */
+  #status-bar {
+    background: #0d1b30;
+    border-bottom: 1px solid var(--border);
+    padding: 6px 20px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    font-size: 13px;
+    flex-shrink: 0;
+    min-height: 32px;
+  }
+
+  .stat-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+  }
+
+  .stat-item .stat-icon { font-size: 14px; }
+
+  .stat-item .stat-value {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stat-item .stat-label {
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+
+  .stat-hp { color: var(--green); }
+  .stat-hp.hurt { color: var(--yellow); }
+  .stat-hp.danger { color: var(--red); }
+  .stat-energy { color: var(--cyan); }
+  .stat-gold { color: var(--yellow); }
+  .stat-floor { color: var(--blue); }
+  .stat-deck { color: var(--text); }
+
+  #status-bar .stat-separator {
+    width: 1px;
+    height: 16px;
+    background: var(--border);
+  }
+
+  #stat-scene {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-left: auto;
+  }
+
   /* ===== Two-column layout ===== */
   #main-layout {
     flex: 1;
     display: flex;
     overflow: hidden;
+    position: relative;
   }
 
   /* --- Left: Thinking panel --- */
@@ -105,6 +158,7 @@
     flex-direction: column;
     border-right: 1px solid var(--border);
     background: #141428;
+    position: relative;
   }
 
   #thinking-panel .panel-header {
@@ -144,10 +198,22 @@
     padding: 14px 16px;
     font-size: 14.5px;
     line-height: 1.85;
-    white-space: pre-wrap;
     word-wrap: break-word;
     color: #e8edf5;
   }
+
+  /* Structured thinking section headers */
+  .thinking-section-header {
+    font-weight: 700;
+    display: block;
+    margin-top: 6px;
+  }
+  .thinking-section-header:first-child { margin-top: 0; }
+  .section-situation { color: var(--blue); }
+  .section-options { color: var(--cyan); }
+  .section-evaluate { color: var(--yellow); }
+  .section-decision { color: var(--green); }
+  .section-risk { color: var(--red); }
 
   #current-thinking .thinking-time {
     font-size: 11px;
@@ -170,6 +236,7 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
+    position: relative;
   }
 
   #thinking-history .label {
@@ -215,6 +282,13 @@
   }
 
   /* --- Right: Action feed --- */
+  #action-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
   #messages {
     flex: 1;
     overflow-y: auto;
@@ -222,7 +296,6 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    scroll-behavior: smooth;
   }
 
   .message {
@@ -231,7 +304,7 @@
     border-radius: 12px;
     font-size: 14px;
     line-height: 1.6;
-    animation: fadeIn 0.3s ease;
+    animation: fadeIn 0.2s ease;
     word-wrap: break-word;
   }
 
@@ -300,23 +373,8 @@
     white-space: pre-wrap;
   }
 
-  .cursor {
-    display: inline-block;
-    width: 2px;
-    height: 1em;
-    background: var(--accent);
-    animation: blink 0.7s infinite;
-    vertical-align: text-bottom;
-    margin-left: 2px;
-  }
-
-  @keyframes blink {
-    0%, 50% { opacity: 1; }
-    51%, 100% { opacity: 0; }
-  }
-
   @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(8px); }
+    from { opacity: 0; transform: translateY(6px); }
     to { opacity: 1; transform: translateY(0); }
   }
 
@@ -334,10 +392,29 @@
   .empty-state .icon { font-size: 48px; }
   .empty-state p { font-size: 14px; max-width: 300px; }
 
-  #scroll-anchor {
-    height: 1px;
-    flex-shrink: 0;
+  /* ===== New message indicators ===== */
+  .new-msg-btn {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    padding: 6px 16px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    z-index: 10;
+    display: none;
+    transition: opacity 0.2s;
   }
+
+  .new-msg-btn:hover { opacity: 0.9; }
+
+  .new-msg-btn.visible { display: block; }
 
   /* Scrollbar styling */
   #messages::-webkit-scrollbar,
@@ -382,6 +459,37 @@
   </div>
 </header>
 
+<!-- Status snapshot bar -->
+<div id="status-bar">
+  <div class="stat-item stat-hp" id="statHp">
+    <span class="stat-icon">❤️</span>
+    <span class="stat-value" id="statHpVal">--/--</span>
+  </div>
+  <div class="stat-separator"></div>
+  <div class="stat-item stat-energy" id="statEnergy">
+    <span class="stat-icon">⚡</span>
+    <span class="stat-value" id="statEnergyVal">--</span>
+  </div>
+  <div class="stat-separator"></div>
+  <div class="stat-item stat-floor">
+    <span class="stat-icon">🗺️</span>
+    <span class="stat-value" id="statFloorVal">--</span>
+    <span class="stat-label">层</span>
+  </div>
+  <div class="stat-separator"></div>
+  <div class="stat-item stat-gold">
+    <span class="stat-icon">💰</span>
+    <span class="stat-value" id="statGoldVal">--</span>
+  </div>
+  <div class="stat-separator"></div>
+  <div class="stat-item stat-deck">
+    <span class="stat-icon">🃏</span>
+    <span class="stat-value" id="statDeckVal">--</span>
+    <span class="stat-label">张</span>
+  </div>
+  <span id="stat-scene"></span>
+</div>
+
 <div id="main-layout">
   <!-- Left: AI Thinking Panel -->
   <div id="thinking-panel">
@@ -393,19 +501,22 @@
     <div id="thinking-history">
       <div class="label">思考历史</div>
     </div>
+    <button class="new-msg-btn" id="newThinkingBtn" onclick="jumpToThinkingBottom()">⬇ <span id="newThinkingCount">0</span> 条新思考</button>
   </div>
 
   <div id="panel-resize"></div>
 
   <!-- Right: Action Feed -->
-  <div id="messages">
-    <div class="empty-state" id="emptyState">
-      <div class="icon">🎮</div>
-      <p>等待 AI 开始游戏...<br>操作记录将实时显示在这里。</p>
+  <div id="action-panel">
+    <div id="messages">
+      <div class="empty-state" id="emptyState">
+        <div class="icon">🎮</div>
+        <p>等待 AI 开始游戏...<br>操作记录将实时显示在这里。</p>
+      </div>
     </div>
+    <button class="new-msg-btn" id="newActionBtn" onclick="jumpToActionBottom()">⬇ <span id="newActionCount">0</span> 条新操作</button>
   </div>
 </div>
-<div id="scroll-anchor"></div>
 
 <script>
 const messagesEl = document.getElementById('messages');
@@ -416,16 +527,36 @@ const thinkingEmpty = document.getElementById('thinkingEmpty');
 const statusDot = document.getElementById('statusDot');
 const statusText = document.getElementById('statusText');
 const emptyState = document.getElementById('emptyState');
-const scrollAnchor = document.getElementById('scroll-anchor');
+
+// Status bar elements
+const statHpVal = document.getElementById('statHpVal');
+const statHpEl = document.getElementById('statHp');
+const statEnergyVal = document.getElementById('statEnergyVal');
+const statFloorVal = document.getElementById('statFloorVal');
+const statGoldVal = document.getElementById('statGoldVal');
+const statDeckVal = document.getElementById('statDeckVal');
+const statScene = document.getElementById('stat-scene');
+
+// New message indicator elements
+const newActionBtn = document.getElementById('newActionBtn');
+const newActionCount = document.getElementById('newActionCount');
+const newThinkingBtn = document.getElementById('newThinkingBtn');
+const newThinkingCount = document.getElementById('newThinkingCount');
 
 let autoScroll = true;
 let autoScrollThinking = true;
 let lastEventId = 0;
 let eventSource = null;
-let typingQueue = [];
-let isTyping = false;
 const MAX_DOM_MESSAGES = 300;
 const MAX_THINKING_HISTORY = 50;
+
+// New message counters (when user scrolled up)
+let missedActionCount = 0;
+let missedThinkingCount = 0;
+
+// rAF batching buffer
+let pendingEvents = [];
+let rafScheduled = false;
 
 // Track whether thinking panel has content
 let currentThinkingData = null;
@@ -461,6 +592,10 @@ messagesEl.addEventListener('scroll', () => {
   const threshold = 50;
   const atBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < threshold;
   autoScroll = atBottom;
+  if (atBottom) {
+    missedActionCount = 0;
+    newActionBtn.classList.remove('visible');
+  }
 });
 
 // Auto-scroll for thinking history
@@ -468,6 +603,10 @@ thinkingHistoryEl.addEventListener('scroll', () => {
   const threshold = 50;
   const atBottom = thinkingHistoryEl.scrollHeight - thinkingHistoryEl.scrollTop - thinkingHistoryEl.clientHeight < threshold;
   autoScrollThinking = atBottom;
+  if (atBottom) {
+    missedThinkingCount = 0;
+    newThinkingBtn.classList.remove('visible');
+  }
 });
 
 function scrollToBottom() {
@@ -480,6 +619,20 @@ function scrollThinkingToBottom() {
   if (autoScrollThinking) {
     thinkingHistoryEl.scrollTop = thinkingHistoryEl.scrollHeight;
   }
+}
+
+function jumpToActionBottom() {
+  autoScroll = true;
+  missedActionCount = 0;
+  newActionBtn.classList.remove('visible');
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function jumpToThinkingBottom() {
+  autoScrollThinking = true;
+  missedThinkingCount = 0;
+  newThinkingBtn.classList.remove('visible');
+  thinkingHistoryEl.scrollTop = thinkingHistoryEl.scrollHeight;
 }
 
 function formatTime(ts) {
@@ -512,6 +665,42 @@ function isThinkingEvent(eventType) {
   return eventType === 'narration' || eventType === 'thinking';
 }
 
+// --- Structured thinking rendering ---
+const SECTION_MAP = [
+  { prefix: '📍', cls: 'section-situation' },
+  { prefix: '🔍', cls: 'section-options' },
+  { prefix: '⚖️', cls: 'section-evaluate' },
+  { prefix: '✅', cls: 'section-decision' },
+  { prefix: '⚠️', cls: 'section-risk' },
+];
+
+function renderStructuredText(container, text) {
+  container.innerHTML = '';
+  const lines = text.split('\n');
+  for (const line of lines) {
+    let matched = false;
+    for (const sec of SECTION_MAP) {
+      if (line.trimStart().startsWith(sec.prefix)) {
+        const span = document.createElement('span');
+        span.className = 'thinking-section-header ' + sec.cls;
+        span.textContent = line;
+        container.appendChild(span);
+        container.appendChild(document.createTextNode('\n'));
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      container.appendChild(document.createTextNode(line + '\n'));
+    }
+  }
+  // Remove trailing newline
+  const last = container.lastChild;
+  if (last && last.nodeType === Node.TEXT_NODE && last.textContent === '\n') {
+    last.remove();
+  }
+}
+
 // Push current thinking to history
 function archiveCurrentThinking() {
   if (!currentThinkingData) return;
@@ -533,22 +722,25 @@ function archiveCurrentThinking() {
 
   trimThinkingHistory();
   scrollThinkingToBottom();
+
+  // Update missed counter if not auto-scrolling
+  if (!autoScrollThinking) {
+    missedThinkingCount++;
+    newThinkingCount.textContent = missedThinkingCount;
+    newThinkingBtn.classList.add('visible');
+  }
 }
 
 // Set content in the current thinking area
 function setCurrentThinking(event) {
-  // Archive previous thinking
   archiveCurrentThinking();
 
-  // Remove empty placeholder if present
   if (thinkingEmpty && thinkingEmpty.parentNode) {
     thinkingEmpty.remove();
   }
 
-  // Update current thinking content
   currentThinkingData = event;
 
-  // Find or create the content div
   let contentDiv = currentThinkingEl.querySelector('.thinking-content');
   let timeDiv = currentThinkingEl.querySelector('.thinking-time');
 
@@ -563,15 +755,84 @@ function setCurrentThinking(event) {
     currentThinkingEl.appendChild(timeDiv);
   }
 
-  contentDiv.textContent = event.text;
+  // Use structured rendering for narration, plain text for thinking
+  if (event.event_type === 'narration') {
+    renderStructuredText(contentDiv, event.text);
+  } else {
+    contentDiv.textContent = event.text;
+  }
   timeDiv.textContent = formatTime(event.timestamp);
 }
 
-function createMessageEl(event, animate) {
+// --- Status bar update ---
+const SCENE_ZH = {
+  monster: '⚔️ 战斗', elite: '⚔️ 精英战', boss: '👑 Boss战',
+  map: '🗺️ 地图', event: '📜 事件', rest_site: '🔥 篝火',
+  shop: '🛒 商店', treasure: '🎁 宝箱', rewards: '🏆 奖励',
+  card_reward: '🃏 选卡', relic_select: '💎 选遗物',
+  card_select: '✋ 选牌', bundle_select: '📦 选包',
+};
+
+function updateStatusBar(stateData) {
+  if (!stateData || typeof stateData !== 'object') return;
+
+  const player = stateData.player || {};
+  const run = stateData.run || {};
+  const st = stateData.state_type || '';
+
+  // HP
+  const hp = player.hp;
+  const maxHp = player.max_hp;
+  if (hp != null && maxHp != null) {
+    statHpVal.textContent = `${hp}/${maxHp}`;
+    const pct = maxHp > 0 ? hp / maxHp : 1;
+    statHpEl.classList.remove('hurt', 'danger');
+    if (pct < 0.3) statHpEl.classList.add('danger');
+    else if (pct < 0.6) statHpEl.classList.add('hurt');
+  }
+
+  // Energy (only in combat)
+  const energy = player.energy;
+  if (energy != null) {
+    statEnergyVal.textContent = energy;
+  }
+
+  // Floor
+  const floor = run.floor;
+  if (floor != null) {
+    statFloorVal.textContent = floor;
+  }
+
+  // Gold
+  const gold = player.gold;
+  if (gold != null) {
+    statGoldVal.textContent = gold;
+  }
+
+  // Deck size
+  const deck = player.deck;
+  if (Array.isArray(deck)) {
+    statDeckVal.textContent = deck.length;
+  }
+
+  // Scene label
+  statScene.textContent = SCENE_ZH[st] || st || '';
+}
+
+// --- Message creation (instant render, no typing animation) ---
+function createMessageEl(event) {
+  // Update status bar from state events
+  if (event.event_type === 'state' && event.raw_data) {
+    try {
+      const rd = typeof event.raw_data === 'string' ? JSON.parse(event.raw_data) : event.raw_data;
+      if (rd.state_snapshot) updateStatusBar(rd.state_snapshot);
+    } catch (e) {}
+  }
+
   // Route thinking/narration events to the thinking panel
   if (isThinkingEvent(event.event_type)) {
     setCurrentThinking(event);
-    return null;
+    return;
   }
 
   // All other events go to the action feed
@@ -585,6 +846,7 @@ function createMessageEl(event, animate) {
 
   const content = document.createElement('span');
   content.className = 'content';
+  content.textContent = event.text;
 
   const time = document.createElement('span');
   time.className = 'timestamp';
@@ -594,59 +856,32 @@ function createMessageEl(event, animate) {
   div.appendChild(time);
   messagesEl.appendChild(div);
 
-  if (animate) {
-    // Skip animation when queue is backing up (3+ pending) or text is long
-    if (typingQueue.length >= 3 || (event.text && event.text.length > 100)) {
-      content.textContent = event.text;
-    } else {
-      typeText(content, event.text);
-    }
-  } else {
-    content.textContent = event.text;
-  }
-
   trimOldMessages();
-  scrollToBottom();
-  return div;
-}
 
-function typeText(el, text) {
-  typingQueue.push({ el, text });
-  if (!isTyping) {
-    processTypingQueue();
+  if (autoScroll) {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  } else {
+    missedActionCount++;
+    newActionCount.textContent = missedActionCount;
+    newActionBtn.classList.add('visible');
   }
 }
 
-function processTypingQueue() {
-  if (typingQueue.length === 0) {
-    isTyping = false;
-    return;
+// --- rAF batching: buffer SSE events, flush once per frame ---
+function scheduleFlush() {
+  if (!rafScheduled) {
+    rafScheduled = true;
+    requestAnimationFrame(flushPendingEvents);
   }
-  isTyping = true;
-  const { el, text } = typingQueue.shift();
+}
 
-  // Add cursor
-  const cursor = document.createElement('span');
-  cursor.className = 'cursor';
-  el.after(cursor);
-
-  let i = 0;
-  const speed = 15; // ms per character
-
-  function tick() {
-    if (i < text.length) {
-      // Add characters in small chunks for efficiency
-      const chunk = text.substring(i, Math.min(i + 2, text.length));
-      el.textContent += chunk;
-      i += chunk.length;
-      scrollToBottom();
-      setTimeout(tick, speed);
-    } else {
-      cursor.remove();
-      processTypingQueue();
-    }
+function flushPendingEvents() {
+  rafScheduled = false;
+  const batch = pendingEvents;
+  pendingEvents = [];
+  for (const ev of batch) {
+    createMessageEl(ev);
   }
-  tick();
 }
 
 // Load history on page load
@@ -654,12 +889,12 @@ async function loadHistory() {
   try {
     const resp = await fetch(`/events/history?since_id=${lastEventId}`);
     const events = await resp.json();
-    events.forEach(ev => {
+    for (const ev of events) {
       if (ev.id > lastEventId) {
-        createMessageEl(ev, false); // No animation for history
+        createMessageEl(ev);
         lastEventId = ev.id;
       }
-    });
+    }
   } catch (e) {
     console.error('Failed to load history:', e);
   }
@@ -684,8 +919,9 @@ function connectSSE() {
   eventSource.addEventListener('message', (e) => {
     const event = JSON.parse(e.data);
     if (event.id > lastEventId) {
-      createMessageEl(event, true); // Animate new events
       lastEventId = event.id;
+      pendingEvents.push(event);
+      scheduleFlush();
     }
   });
 
@@ -714,15 +950,28 @@ function connectSSE() {
     const items = thinkingHistoryEl.querySelectorAll('.thinking-history-item');
     items.forEach(item => item.remove());
 
+    // Reset all counters
     lastEventId = 0;
-    typingQueue = [];
-    isTyping = false;
+    missedActionCount = 0;
+    missedThinkingCount = 0;
+    newActionBtn.classList.remove('visible');
+    newThinkingBtn.classList.remove('visible');
+    pendingEvents = [];
+    rafScheduled = false;
+
+    // Reset status bar
+    statHpVal.textContent = '--/--';
+    statEnergyVal.textContent = '--';
+    statFloorVal.textContent = '--';
+    statGoldVal.textContent = '--';
+    statDeckVal.textContent = '--';
+    statScene.textContent = '';
+    statHpEl.classList.remove('hurt', 'danger');
   });
 
   eventSource.onerror = () => {
     setConnected(false);
     eventSource.close();
-    // Reconnect with exponential backoff
     setTimeout(connectSSE, 3000);
   };
 }
@@ -730,7 +979,6 @@ function connectSSE() {
 async function clearHistory() {
   try {
     await fetch('/api/clear', { method: 'POST' });
-    // SSE 'clear' event will handle the DOM cleanup
   } catch (e) {
     console.error('Failed to clear:', e);
   }

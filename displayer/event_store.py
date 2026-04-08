@@ -37,12 +37,18 @@ class EventStore:
         self._next_id = 1
         self._subscribers: list[asyncio.Queue] = []
 
+        self._conn = self._open_conn()
         self._init_db()
         self._load_history()
 
+    def _open_conn(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        return conn
+
     def _init_db(self):
-        conn = sqlite3.connect(str(self._db_path))
-        conn.execute("""
+        self._conn.execute("""
             CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY,
                 timestamp REAL NOT NULL,
@@ -52,18 +58,15 @@ class EventStore:
                 raw_data TEXT DEFAULT ''
             )
         """)
-        conn.commit()
-        conn.close()
+        self._conn.commit()
 
     def _load_history(self):
         """Load only the most recent events into memory."""
-        conn = sqlite3.connect(str(self._db_path))
-        rows = conn.execute(
+        rows = self._conn.execute(
             "SELECT id, timestamp, event_type, text, tool_name, raw_data "
             "FROM events ORDER BY id DESC LIMIT ?",
             (_MAX_MEMORY_EVENTS,),
         ).fetchall()
-        conn.close()
 
         for row in reversed(rows):
             self._events.append(Event(
@@ -93,15 +96,13 @@ class EventStore:
             self._next_id += 1
             self._events.append(event)
 
-            conn = sqlite3.connect(str(self._db_path))
-            conn.execute(
+            self._conn.execute(
                 "INSERT INTO events (id, timestamp, event_type, text, tool_name, raw_data) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (event.id, event.timestamp, event.event_type,
                  event.text, event.tool_name, event.raw_data),
             )
-            conn.commit()
-            conn.close()
+            self._conn.commit()
 
             for q in self._subscribers:
                 try:
@@ -129,10 +130,8 @@ class EventStore:
         with self._lock:
             self._events.clear()
             self._next_id = 1
-            conn = sqlite3.connect(str(self._db_path))
-            conn.execute("DELETE FROM events")
-            conn.commit()
-            conn.close()
+            self._conn.execute("DELETE FROM events")
+            self._conn.commit()
             for q in self._subscribers:
                 try:
                     q.put_nowait(None)

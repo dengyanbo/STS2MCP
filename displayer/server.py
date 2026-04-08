@@ -37,6 +37,32 @@ async def handle_index(request: web.Request) -> web.Response:
     return web.FileResponse(html_path)
 
 
+def _extract_state_snapshot(state: dict) -> dict | None:
+    """Extract minimal stats from game state for the dashboard status bar."""
+    player = state.get("player")
+    run = state.get("run")
+    if not player and not run:
+        return None
+    snap: dict = {}
+    if player:
+        p: dict = {}
+        for k in ("hp", "max_hp", "energy", "gold", "block"):
+            if k in player:
+                p[k] = player[k]
+        if "deck" in player and isinstance(player["deck"], list):
+            p["deck"] = player["deck"]
+        if p:
+            snap["player"] = p
+    if run:
+        r: dict = {}
+        if "floor" in run:
+            r["floor"] = run["floor"]
+        if r:
+            snap["run"] = r
+    snap["state_type"] = state.get("state_type", "")
+    return snap if snap else None
+
+
 async def handle_post_event(request: web.Request) -> web.Response:
     """Receive a tool call event from the MCP server."""
     try:
@@ -74,11 +100,18 @@ async def handle_post_event(request: web.Request) -> web.Response:
             return web.json_response({"status": "ok", "event_id": reason_event.id})
         return web.json_response({"status": "ok", "suppressed": True})
 
+    # Attach compact state snapshot for the dashboard status bar
+    raw = {"params": params}
+    if state_json and isinstance(state_json, dict):
+        snap = _extract_state_snapshot(state_json)
+        if snap:
+            raw["state_snapshot"] = snap
+
     event = store.append(
         text=text,
         event_type=event_type,
         tool_name=tool_name,
-        raw_data={"params": params},
+        raw_data=raw,
     )
 
     return web.json_response({"status": "ok", "event_id": event.id})

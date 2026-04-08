@@ -476,6 +476,16 @@ async def combat_batch(actions: list[dict], reason: str | None = None) -> str:
     This prevents wrong-card bugs caused by index shifting after draws
     or earlier plays.
 
+    ⚠️ IMPORTANT SAFETY RULES:
+    - When selecting multiple cards (hand_select), select from HIGHEST
+      index to LOWEST to avoid index shifting.
+    - Do NOT batch actions that involve randomness (draw effects,
+      random potions, etc.). Execute them individually, call
+      get_game_state() to see the result, then decide the next step.
+      E.g. 燃烧契约 draws new cards — don't pre-plan plays after it.
+    - If an action fails to register, fall back to individual tool
+      calls (combat_play_card / use_potion) instead of retrying batch.
+
     Args:
         actions: Ordered list of action dicts. Each dict has:
             - type: "play_card" | "use_potion" | "end_turn"
@@ -593,9 +603,11 @@ async def combat_batch(actions: list[dict], reason: str | None = None) -> str:
             results.append(f"[{i}] ✗ {_handle_error(e)}")
             break
 
-        # Short delay to let the game process the action
+        # Wait for game animation to complete between actions.
+        # 300ms handles most card animations; complex chains (AOE,
+        # multi-draw, exhaust triggers) may need the re-resolve fallback.
         if action_type != "end_turn" and i < len(actions) - 1:
-            await asyncio.sleep(0.15)
+            await asyncio.sleep(0.3)
 
     # If the last action was end_turn, wait for enemy turn to complete
     if actions and actions[-1].get("type") == "end_turn":

@@ -345,3 +345,46 @@ Root causes:
 - **HP management failure** — 73→32→56→26 across Act 1, never stabilized
 - **No耸肩无视 again** — recurring problem, need to prioritize block cards
 - **combat_batch unreliable with draw effects** — must play cards individually after indices shift
+
+## Run #9 - 2026-04-08 - DEFEAT Floor 14
+
+- **角色**: 铁甲战士
+- **死因**: 小啃兽×2 力量成长(4-6Str), 18+伤/回合, 41HP进战
+- **牌组**: 18张(过多) - 消耗体系(无惧疼痛+邪眼+破灭+) + 放血+惊逃+耸肩无视×3+剑柄打击+闪电霹雳
+- **遗物**: 燃烧之血, 失物盒, 招架盾, 毒素之蛋
+- **关键时刻**: 精英旧日雕像击杀成功但HP从85→41；商店买耸肩无视+破灭+增加牌组大小
+- **教训**: 牌组18张太臃肿；精英后低HP打普通怪极危险；消耗体系需精简牌组支撑
+
+### Deck (18 cards)
+- 打击 ×5, 防御 ×4, 痛击 (2), 放血 (0), 闪电霹雳 (1), 惊逃 (1), 无惧疼痛 (1), 邪眼 (1), 耸肩无视 ×3 (1, 1 upgraded), 剑柄打击 (1), 破灭+ (1)
+
+### Relics
+- 燃烧之血, 失物盒, 招架盾, 毒素之蛋
+
+### Death Cause
+Entered Nibbit fight at 41HP (48%) after losing 44HP to elite 旧日雕像(127HP). Two Nibbits scaled Strength unchecked to 4-6 each, dealing 18+ combined damage per turn. combat_batch index shifting caused wrong cards to play repeatedly during critical turns, wasting energy and actions. 18-card deck diluted draw quality — core exhaust combo (邪眼+破灭++无惧疼痛) drew inconsistently.
+
+Root causes:
+1. **combat_batch index shifting** — wrong cards played on critical turns
+2. **Nibbits scaled Strength unchecked** — 4→6 each, 18+ damage/turn
+3. **Entered fight at 41HP (48%)** — post-elite HP too low for any combat
+4. **18-card deck too bloated** — exhaust combo pieces drawn inconsistently
+
+### Key Moments
+1. **涅奥:** 失物盒 relic (card reward + potion). Good start.
+2. **Early floors:** Acquired 闪电霹雳(AoE+Vuln), 放血(energy gen), 惊逃(auto-play attack).
+3. **Shop:** Bought 耸肩无视×3 + 破灭+ — improved block/exhaust but bloated deck to 18.
+4. **Elite 旧日雕像 (127HP):** Beat it but HP dropped 85→41. Got 招架盾(block→damage) + 毒素之蛋(auto-upgrade skills).
+5. **Fatal Nibbit fight:** 41HP entry, combat_batch errors, Nibbits scaled to 4-6 Str, died.
+
+### What Went Right
+- 邪眼+破灭++无惧疼痛 exhaust combo was powerful when it fired
+- 招架盾 + 毒素之蛋 are excellent relics
+- Beat 127HP elite — good combat execution there
+
+### What Went Wrong
+- **Deck bloat to 18 cards** — buying耸肩无视×3 was too many copies, diluted deck
+- **No HP recovery after elite** — should have pathed to campfire before more fights
+- **combat_batch index shifting** — critical bug caused multiple misplays
+- **Nibbits allowed to scale** — should have focused one down immediately
+- **Potion discipline unclear** — may have saved too aggressively again
