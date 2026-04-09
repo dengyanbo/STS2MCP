@@ -77,6 +77,52 @@ _LOGGER_READ_ONLY = frozenset({"narrate", "get_game_state", "mp_get_game_state"}
 # Safe because MCP tool calls are serial (no parallelism).
 _action_game_state: dict | None = None
 
+# ---------------------------------------------------------------------------
+# Turn review — auto-detect new combat rounds and inject review data
+# ---------------------------------------------------------------------------
+_COMBAT_STATE_TYPES = frozenset({"monster", "elite", "boss"})
+_last_combat_round: int = 0
+
+
+async def _fetch_turn_summary() -> str | None:
+    """Fetch last turn summary from the displayer (best-effort)."""
+    if not _displayer_enabled:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=3, trust_env=False) as client:
+            r = await client.get(f"{_displayer_url}/api/last-turn")
+            r.raise_for_status()
+            data = r.json()
+            return data.get("summary")
+    except Exception:
+        return None
+
+
+def _detect_round_change(state: dict | None) -> int | None:
+    """Check if a new combat round started. Returns new round number or None.
+
+    Also resets tracking when combat ends (state_type leaves combat).
+    """
+    global _last_combat_round
+    if state is None:
+        return None
+
+    state_type = state.get("state_type", "")
+    if state_type not in _COMBAT_STATE_TYPES:
+        # Left combat — reset tracker
+        _last_combat_round = 0
+        return None
+
+    battle = state.get("battle") or {}
+    current_round = battle.get("round", 0)
+    if current_round > _last_combat_round:
+        prev = _last_combat_round
+        _last_combat_round = current_round
+        # Only trigger review for round 2+ (round 1 has no previous turn)
+        if prev > 0:
+            return current_round
+    return None
+
 
 def _instrumented_tool(*deco_args, **deco_kwargs):
     orig_decorator = _orig_mcp_tool(*deco_args, **deco_kwargs)
@@ -146,6 +192,24 @@ def _instrumented_tool(*deco_args, **deco_kwargs):
                     )
                 except Exception:
                     pass  # Logger must never break gameplay
+
+            # --- Turn review injection ------------------------------------
+            # When a new combat round is detected (round 2+), fetch the
+            # previous turn's summary and append it to the result so the
+            # main agent can fire-and-forget a mistake-analysis sub-agent.
+            new_round = _detect_round_change(logger_state_obj)
+            if new_round is not None:
+                try:
+                    summary = await _fetch_turn_summary()
+                    if summary and summary != "No turn data":
+                        result = (
+                            result
+                            + "\n\n[TURN_REVIEW_PENDING]\n"
+                            + summary
+                            + "\n[/TURN_REVIEW_PENDING]"
+                        )
+                except Exception:
+                    pass  # Never block gameplay
 
             return result
 
@@ -322,9 +386,9 @@ async def narrate(text: str) -> str:
 async def report_mistake(text: str, turn: int | None = None) -> str:
     """Report a gameplay mistake identified during post-turn analysis.
 
-    Call this at the start of each combat turn (Step 0) to flag errors
-    from previous turns. The mistake will appear in the live dashboard's
-    dedicated mistakes panel.
+    NOTE: This tool is primarily used by the mistake-analysis sub-agent,
+    NOT by the main gameplay agent. The sub-agent posts mistakes directly
+    to the displayer via HTTP instead of calling this tool.
 
     Args:
         text: Description of the mistake in natural Chinese. Include what
@@ -345,9 +409,8 @@ async def get_last_turn_summary() -> str:
     - Game state at turn end (after enemy actions)
     - HP/damage changes
 
-    Use this at the start of each combat turn to feed a sub-agent for
-    mistake analysis. The sub-agent can identify suboptimal plays like
-    wrong card order, wasted energy, incorrect targeting, etc.
+    NOTE: Turn review data is now auto-injected into tool responses via
+    [TURN_REVIEW_PENDING] blocks. This tool is kept for manual debugging.
 
     Returns "No turn data" if no completed turn is available.
     """

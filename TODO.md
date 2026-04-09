@@ -1,4 +1,4 @@
-1. 失误榜还不能正常生效，子agent没有测试
+1. ~~失误榜还不能正常生效，子agent没有测试~~ → 已重构：MCP自动注入[TURN_REVIEW_PENDING]，主agent fire-and-forget task sub-agent，sub-agent直接POST到displayer
 2. 什么时间做conversation compact合适？也许是每场战斗前，也许是每两场战斗前？
 3. medium模型看起来效果比high还好？有待测试
 4. AI的战斗方案有问题，它可能以为每回合结束不用丢手牌？也可能认为费用每回合不会刷新？

@@ -18,34 +18,38 @@ applyTo: "**"
 >
 > **Batch 安全原则：** ① 多张选牌时从右到左选取（防止索引偏移）② 含随机结果的操作（抽牌牌效、随机药水等）**不放入 batch**——先单独执行，等 `get_game_state()` 确认结果后再决定后续 ③ 操作不生效时改为逐步手动执行。
 
-### 第零步：回顾失误（→ task sub-agent + report_mistake）
-**每回合开始时（第3回合起），派子智能体分析上回合是否有操作失误：**
+### 第零步：自动失误分析（火后即忘）
+**失误分析已完全自动化。** 当新回合开始时（第 2 回合起），MCP 会在工具响应中自动注入 `[TURN_REVIEW_PENDING]...[/TURN_REVIEW_PENDING]` 块，包含上回合的详细操作记录。
 
-1. 调用 `get_last_turn_summary()` 获取上回合的结构化数据（手牌、敌人、操作序列、结果）
-2. 调用 `task` 子智能体分析，使用以下 prompt（将 `{summary}` 替换为上一步的数据）：
-   ```
-   agent_type: "general-purpose"
-   name: "turn-analyzer"
-   description: "Analyze combat turn"
-   prompt: |
-     你是杀戮尖塔2战斗分析专家。分析以下战斗回合是否存在操作失误。
+**主 agent 规则：**
+1. 看到 `[TURN_REVIEW_PENDING]` 块时，**立即 fire-and-forget 一个 task sub-agent**，将块内全部内容作为输入。
+2. **不等待结果**，直接继续当前回合的正常决策（narrate → 打牌）。
+3. **不需要调用** `get_last_turn_summary()` 或 `report_mistake()`。
 
-     {summary}
+**Sub-agent 调用模板：**
+```
+task(
+  agent_type="task",
+  name="turn-review",
+  description="Analyze last combat turn",
+  prompt="""你是杀戮尖塔2战斗分析专家。分析以下战斗回合是否存在操作失误。
 
-     分析要点：
-     1. 出牌顺序是否最优？（例如：应先施加易伤/虚弱再打高伤牌）
-     2. 是否浪费了能量？（剩余能量是否可以打更多牌）
-     3. 目标选择是否正确？（集火弱目标先杀 vs 分散伤害）
-     4. 药水使用时机是否正确？（增益药水应在攻击牌之前）
-     5. 防御是否充足/过度？（敌人增益/休眠回合不需格挡）
-     6. 能力牌是否及时打出？（越早打收益越高）
+{将 [TURN_REVIEW_PENDING] 块内容粘贴到这里}
 
-     只报告**确定的失误**，不报告可争议的策略选择。
-     如果有失误，每条用 ❌ 开头，包含：具体描述 + 正确打法 + 估计影响（如"损失约N点伤害"）。
-     如果没有失误，输出"✅ 本回合无明显失误"。
-   ```
-3. 对子智能体发现的每个失误，调用 `report_mistake(text="...", turn=N)` 上报到失误榜
-4. 无失误则跳过
+分析要点：
+1. 出牌顺序是否最优？（例如：应先施加易伤/虚弱再打高伤牌）
+2. 是否浪费了能量？（剩余能量是否可以打更多牌）
+3. 目标选择是否正确？（集火弱目标先杀 vs 分散伤害）
+4. 药水使用时机是否正确？（增益药水应在攻击牌之前）
+5. 防御是否充足/过度？（敌人增益/休眠回合不需格挡）
+6. 能力牌是否及时打出？（越早打收益越高）
+
+只报告**确定的失误**，不报告可争议的策略选择。
+如果发现失误，用 PowerShell 调用 displayer API 上报：
+Invoke-RestMethod -Uri 'http://localhost:15580/api/events' -Method Post -ContentType 'application/json' -Body '{"tool":"report_mistake","params":{"text":"❌ [T回合号] 具体失误描述","turn":回合号},"result":"OK"}'
+如果没有失误，不做任何操作。"""
+)
+```
 
 ### 第一步：审视战场（→ narrate 📍 局势总结）
 打牌前分析：你的 HP/格挡/能量/手牌/药水/遗物/状态 → 敌人 HP/格挡/意图/增减益/entity_id → **能否本回合击杀？能则跳过格挡。**

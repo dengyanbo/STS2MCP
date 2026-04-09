@@ -25,14 +25,17 @@ Singleplayer and multiplayer (co-op) supported. Tested against STS2 `v0.99.1`.
 ┌────────────────▼────────────────────────────────────────┐
 │  MCP Server (mcp/)                                       │
 │  Bridges HTTP API → 70+ MCP tools                        │
+│  Auto-injects [TURN_REVIEW_PENDING] on new combat rounds │
 │  Python 3.11+ · FastMCP · httpx                          │
 └────────┬───────────────────┬──────────────┬─────────────┘
          │ stdio (MCP)       │ HTTP POST    │ file I/O
 ┌────────▼────────────┐  ┌───▼─────────────┐ ┌──▼──────────────┐
 │  AI Agent            │  │  Displayer      │ │  Game Logger    │
 │  (Claude, GPT, etc.) │  │  localhost:15580│ │  logs/run_*/    │
-└─────────────────────┘  └─────────────────┘ │  JSONL + MD     │
-                                              └─────────────────┘
+│  ├─ Main agent       │  │  ├─ Narration   │ │  JSONL + MD     │
+│  └─ Review sub-agent─┼──┤  ├─ Action feed │ └─────────────────┘
+│     (fire & forget)  │  │  └─ Mistake board│
+└─────────────────────┘  └─────────────────┘
 ```
 
 | Component | Path | Description |
@@ -100,7 +103,10 @@ uv run python displayer/server.py
 # Open http://localhost:15580
 ```
 
-The MCP server automatically sends events to the displayer — no extra config needed.
+The MCP server automatically sends events to the displayer — no extra config needed. Features include:
+- **Live AI thinking** — Watch the agent's chain-of-thought reasoning in real time
+- **Action feed** — Every card played, potion used, and path chosen
+- **Mistake board** — Automated post-turn analysis flags suboptimal plays (powered by a background sub-agent)
 
 ### 4. Game Logs (Auto-enabled)
 

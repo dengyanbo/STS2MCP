@@ -81,7 +81,12 @@ applyTo: "**"
   - 📍 **进入新场景时**：完整分析当前局势
   - ⚔️ **战斗每回合开始时**：分析手牌、敌人意图、所有方案的数值对比
   - 🃏 **卡牌奖励选择时**：逐张评估卡牌与牌组的协同
-  - ❌ **犯错后**：承认错误，解释为什么出错，如何调整
+
+### 自动失误分析 (Auto Mistake Detection) ⭐⭐
+- **失误分析已完全自动化，主 agent 无需手动调用 `report_mistake()` 或 `get_last_turn_summary()`。**
+- 当新战斗回合开始（第 2 回合起），MCP 会在工具响应中自动注入 `[TURN_REVIEW_PENDING]...[/TURN_REVIEW_PENDING]` 块。
+- **看到此块时**：立即 fire-and-forget 一个 `task` sub-agent（模板见战斗策略技能），将块内容作为输入，**不等待结果**，继续正常决策。
+- Sub-agent 会独立分析上回合操作，有失误则自动上报到失误榜。
 
 - **内容结构**（使用结构化 Chain-of-Thought）：
   ```

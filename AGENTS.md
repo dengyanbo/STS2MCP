@@ -36,5 +36,5 @@ The learnings file has a **15-entry cap per section** to prevent context bloat.
 - **Combat analysis** — `combat_analysis` section with damage estimation, unblocked damage, and HP projections
 - **Contextual hints** — `hints` array with situational advice (lethal warnings, kill opportunities, etc.)
 - **Batch operations** — `combat_batch` for multiple actions per call; `rewards_claim_all` for non-card rewards
-- **Decision narration** — Call `narrate(text="...")` before significant decisions to share your strategic reasoning with viewers on the live narration dashboard. Example: `narrate(text="HP充足，挑战精英获取遗物")` → `map_choose_node(node_index=1)`
 - **Live narration tool** — Call `narrate(text="...")` BEFORE every significant decision to share your detailed strategic thinking with viewers. Write 2-5 sentences in natural Chinese analyzing the situation, your options, and why you're choosing a particular path. This is the primary way viewers understand your gameplay.
+- **Auto mistake detection** — When a new combat round starts (round 2+), the MCP server auto-injects a `[TURN_REVIEW_PENDING]` block into tool responses containing the previous turn's summary. The main agent fire-and-forgets a task sub-agent to analyze it; the sub-agent posts any mistakes directly to the displayer via HTTP. The main agent never blocks on mistake analysis.
