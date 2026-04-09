@@ -1141,12 +1141,20 @@ def _narrate_mistake(
     return f"❌ {text}"
 
 
+def _narrate_sub_thinking(
+    params: dict, result: str, parsed: dict | None, state: dict | None
+) -> str:
+    """Pass through the sub-agent's thinking text directly."""
+    return params.get("text", "...")
+
+
 # ---------------------------------------------------------------------------
 # Event type classification
 # ---------------------------------------------------------------------------
 
 _EVENT_TYPE_MAP: dict[str, str] = {
     "narrate": "narration",
+    "sub_narrate": "sub_thinking",
     "report_mistake": "mistake",
     "get_game_state": "state",
     "combat_play_card": "action",
@@ -1200,6 +1208,8 @@ def _classify_event(tool_name: str) -> str:
 _BASE_NARRATORS: dict[str, Any] = {
     # AI narration (pass-through)
     "narrate": _narrate_ai_narration,
+    # Sub-agent thinking (pass-through)
+    "sub_narrate": _narrate_sub_thinking,
     # Mistake reports
     "report_mistake": _narrate_mistake,
     # State queries

@@ -44,10 +44,20 @@ task(
 5. 防御是否充足/过度？（敌人增益/休眠回合不需格挡）
 6. 能力牌是否及时打出？（越早打收益越高）
 
-只报告**确定的失误**，不报告可争议的策略选择。
-如果发现失误，用 PowerShell 调用 displayer API 上报：
+**第一步：先发送你的分析思考到 displayer 面板**，让观众看到你的推理过程：
+Invoke-RestMethod -Uri 'http://localhost:15580/api/events' -Method Post -ContentType 'application/json' -Body (@{tool="sub_narrate";params=@{text="你的完整分析内容"};result="OK"} | ConvertTo-Json -Compress)
+
+分析内容格式（用中文）：
+📍 回合概况 — 手牌、能量、敌人意图、实际操作
+🔍 逐步审查 — 每个操作是否最优，数值验算
+⚖️ 替代方案 — 如果有更优解，列出对比
+✅ 结论 — 是否有失误，或操作正确
+
+**第二步：如果发现确定的失误**，用 PowerShell 调用 displayer API 上报：
 Invoke-RestMethod -Uri 'http://localhost:15580/api/events' -Method Post -ContentType 'application/json' -Body '{"tool":"report_mistake","params":{"text":"❌ [T回合号] 具体失误描述","turn":回合号},"result":"OK"}'
-如果没有失误，不做任何操作。"""
+
+只报告**确定的失误**，不报告可争议的策略选择。
+即使没有失误，也必须执行第一步发送分析思考。"""
 )
 ```
 
@@ -78,10 +88,20 @@ task(
 7. **药水时机**: 药水是否在最关键时刻使用？是否可以更早/更晚用？
 8. **击杀窗口**: 是否错过了提前击杀的机会（差几点伤害就能少承受一回合攻击）？
 
-只报告**确定的战略级失误**。单回合内的小操作失误由回合分析处理，这里关注跨多回合的模式和决策。
-如果发现失误，用 PowerShell 调用 displayer API 上报：
+**第一步：先发送你的分析思考到 displayer 面板**，让观众看到你的推理过程：
+Invoke-RestMethod -Uri 'http://localhost:15580/api/events' -Method Post -ContentType 'application/json' -Body (@{tool="sub_narrate";params=@{text="你的完整分析内容"};result="OK"} | ConvertTo-Json -Compress)
+
+分析内容格式（用中文）：
+📍 战斗概况 — 敌人、回合数、总HP变化
+🔍 逐回合审查 — 关键回合的操作是否最优
+⚖️ 战略评估 — 跨回合的模式问题
+✅ 结论 — 战略级失误或表现良好
+
+**第二步：如果发现确定的战略级失误**，用 PowerShell 调用 displayer API 上报：
 Invoke-RestMethod -Uri 'http://localhost:15580/api/events' -Method Post -ContentType 'application/json' -Body '{"tool":"report_mistake","params":{"text":"📊 [战略] 具体战略失误描述","turn":0},"result":"OK"}'
-如果没有战略失误，不做任何操作。"""
+
+只报告**确定的战略级失误**。单回合内的小操作失误由回合分析处理，这里关注跨多回合的模式和决策。
+即使没有战略失误，也必须执行第一步发送分析思考。"""
 )
 ```
 

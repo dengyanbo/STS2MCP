@@ -452,6 +452,68 @@
     text-align: center;
   }
 
+  /* ===== Sub-agent thinking panel ===== */
+  #sub-thinking-panel {
+    max-height: 35%;
+    overflow-y: auto;
+    border-bottom: 1px solid var(--border);
+    background: #141428;
+    flex-shrink: 0;
+    display: none;
+  }
+
+  #sub-thinking-panel .panel-header {
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #a78bfa;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  #sub-thinking-panel .panel-header .badge {
+    background: #a78bfa;
+    color: #fff;
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-weight: 700;
+  }
+
+  #sub-thinking-content {
+    padding: 12px 14px;
+  }
+
+  #sub-thinking-content .thinking-content {
+    background: #fff;
+    border: 1px solid #ccc;
+    border-left: 3px solid #a78bfa;
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-size: 14px;
+    line-height: 1.85;
+    word-wrap: break-word;
+    color: #222;
+  }
+
+  #sub-thinking-content .thinking-time {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 6px;
+    text-align: right;
+  }
+
+  .sub-thinking-empty {
+    padding: 12px 14px;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: center;
+  }
+
   /* ===== New message indicators ===== */
   .new-msg-btn {
     position: absolute;
@@ -480,22 +542,26 @@
   #messages::-webkit-scrollbar,
   #thinking-history::-webkit-scrollbar,
   #current-thinking::-webkit-scrollbar,
-  #mistakes-panel::-webkit-scrollbar { width: 6px; }
+  #mistakes-panel::-webkit-scrollbar,
+  #sub-thinking-panel::-webkit-scrollbar { width: 6px; }
   #messages::-webkit-scrollbar-track,
   #thinking-history::-webkit-scrollbar-track,
   #current-thinking::-webkit-scrollbar-track,
-  #mistakes-panel::-webkit-scrollbar-track { background: transparent; }
+  #mistakes-panel::-webkit-scrollbar-track,
+  #sub-thinking-panel::-webkit-scrollbar-track { background: transparent; }
   #messages::-webkit-scrollbar-thumb,
   #thinking-history::-webkit-scrollbar-thumb,
   #current-thinking::-webkit-scrollbar-thumb,
-  #mistakes-panel::-webkit-scrollbar-thumb {
+  #mistakes-panel::-webkit-scrollbar-thumb,
+  #sub-thinking-panel::-webkit-scrollbar-thumb {
     background: var(--border);
     border-radius: 3px;
   }
   #messages::-webkit-scrollbar-thumb:hover,
   #thinking-history::-webkit-scrollbar-thumb:hover,
   #current-thinking::-webkit-scrollbar-thumb:hover,
-  #mistakes-panel::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+  #mistakes-panel::-webkit-scrollbar-thumb:hover,
+  #sub-thinking-panel::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
   /* Thinking-panel current-thinking scrollbar (dark bg, no override needed) */
 
@@ -580,6 +646,12 @@
         <div class="mistake-empty" id="mistakesEmpty">本场战斗暂无失误</div>
       </div>
     </div>
+    <div id="sub-thinking-panel">
+      <div class="panel-header">🤖 子Agent 分析 <span class="badge" id="subThinkingBadge" style="display:none">0</span></div>
+      <div id="sub-thinking-content">
+        <div class="sub-thinking-empty" id="subThinkingEmpty">等待子Agent开始分析...</div>
+      </div>
+    </div>
     <div id="messages">
       <div class="empty-state" id="emptyState">
         <div class="icon">🎮</div>
@@ -605,6 +677,13 @@ const mistakesList = document.getElementById('mistakes-list');
 const mistakesEmpty = document.getElementById('mistakesEmpty');
 const mistakesBadge = document.getElementById('mistakesBadge');
 let mistakeCount = 0;
+
+// Sub-agent thinking panel elements
+const subThinkingPanel = document.getElementById('sub-thinking-panel');
+const subThinkingContent = document.getElementById('sub-thinking-content');
+const subThinkingEmpty = document.getElementById('subThinkingEmpty');
+const subThinkingBadge = document.getElementById('subThinkingBadge');
+let subThinkingCount = 0;
 
 // Status bar elements
 const statHpVal = document.getElementById('statHpVal');
@@ -911,6 +990,35 @@ function updateStatusBar(stateData) {
 }
 
 // --- Message creation (instant render, no typing animation) ---
+
+// Set sub-agent thinking content (replaces previous content, similar to main thinking panel)
+function setSubThinking(event) {
+  subThinkingPanel.style.display = '';
+  if (subThinkingEmpty && subThinkingEmpty.parentNode) {
+    subThinkingEmpty.remove();
+  }
+  subThinkingCount++;
+  subThinkingBadge.textContent = subThinkingCount;
+  subThinkingBadge.style.display = 'inline';
+
+  let contentDiv = subThinkingContent.querySelector('.thinking-content');
+  let timeDiv = subThinkingContent.querySelector('.thinking-time');
+
+  if (!contentDiv) {
+    contentDiv = document.createElement('div');
+    contentDiv.className = 'thinking-content';
+    subThinkingContent.appendChild(contentDiv);
+  }
+  if (!timeDiv) {
+    timeDiv = document.createElement('div');
+    timeDiv.className = 'thinking-time';
+    subThinkingContent.appendChild(timeDiv);
+  }
+
+  renderStructuredText(contentDiv, event.text);
+  timeDiv.textContent = formatTime(event.timestamp);
+}
+
 function addMistakeItem(event) {
   if (mistakesEmpty && mistakesEmpty.parentNode) {
     mistakesEmpty.remove();
@@ -959,6 +1067,12 @@ function createMessageEl(event) {
   // Route mistake events to the mistakes panel
   if (event.event_type === 'mistake') {
     addMistakeItem(event);
+    return;
+  }
+
+  // Route sub-agent thinking to the sub-agent panel
+  if (event.event_type === 'sub_thinking') {
+    setSubThinking(event);
     return;
   }
 
@@ -1093,6 +1207,21 @@ function connectSSE() {
     mistakeCount = 0;
     mistakesBadge.textContent = '0';
     mistakesBadge.style.display = 'none';
+
+    // Clear sub-agent thinking panel
+    const subContentDiv = subThinkingContent.querySelector('.thinking-content');
+    const subTimeDiv = subThinkingContent.querySelector('.thinking-time');
+    if (subContentDiv) subContentDiv.remove();
+    if (subTimeDiv) subTimeDiv.remove();
+    const emptySub = document.createElement('div');
+    emptySub.className = 'sub-thinking-empty';
+    emptySub.id = 'subThinkingEmpty';
+    emptySub.textContent = '等待子Agent开始分析...';
+    subThinkingContent.appendChild(emptySub);
+    subThinkingCount = 0;
+    subThinkingBadge.textContent = '0';
+    subThinkingBadge.style.display = 'none';
+    subThinkingPanel.style.display = 'none';
 
     // Reset all counters
     lastEventId = 0;
