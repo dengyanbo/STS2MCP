@@ -435,3 +435,52 @@ Root causes:
 - **No plan for 昏眩 recovery** — needed artifact/debuff cleanse or enough HP to tank through
 - **HP management entering boss** — 66/85 (78%) seemed safe but wasn't enough for boss with debuff mechanics
 - **288 gold unspent** — massive gold waste, should have spent on removal/potions in shop
+
+## Run #11
+
+- **Date:** 2026-04-09
+- **Character:** 铁甲战士 (Ironclad)
+- **Result:** ❌ Defeated at Act 2 Boss (Floor 33)
+- **Ascension:** 0
+- **Boss:** 无厌沙虫 (The Insatiable) — 321 HP
+
+### Deck (21 cards at start of Boss, heavily consumed during fight)
+- 打击 ×4, 防御 ×4, 痛击+ (2), 耸肩无视 (1), 剑柄打击 (1), 劫掠 (1), 武装 (1), 放血+ (0), 烙印 (0), 原始力量 (0), 无惧疼痛 (1), 惊逃 (2), 薪火之源 (2), 重振精神 (1), 邪眼+ (1)
+
+### Relics
+- 燃烧之血, 失物盒, 天选芝士, 余烬茶, 锚, 药水腰带, 符文金字塔, 弹珠袋, 双截棍, 小邮箱
+
+### Potions
+- 痊愈药水 (used T1), 瓶中精灵 (triggered R6)
+
+### Death Cause
+无厌沙虫 (The Insatiable) has 321HP and a unique **沙坑 (Sandpit)** mechanic: a death timer that counts down each turn. Player must play **狂乱逃离 (Frantic Escape)** status cards to extend the timer. The boss also floods the deck with 6 escape cards per cycle, creating massive hand pollution.
+
+Root causes:
+1. **Insufficient DPS** — 321HP requires ~40+ damage/turn for 8 rounds. Deck averaged ~25 damage/turn, far below the threshold.
+2. **No high-damage finisher** — No 重刀, 旋风斩, or other scaling attack. 巨石 (via 原始力量) was the best at 17-27 damage but one-shot.
+3. **Consumed key engine pieces** — 重振精神 consumed 薪火之源, 邪眼+, 耸肩无视 in desperation blocks, permanently losing energy generation.
+4. **HP starvation entering Boss** — Entered at 36/93 (39%). Every combat in Act 2 was a near-death experience (2-5HP surviving multiple fights).
+5. **符文金字塔 + 狂乱逃离 = fatal pollution** — RP retains escape cards that cost 1→2→3 energy, clogging hand and consuming energy meant for attacks.
+
+### Key Moments
+1. **外骨骼虫 ×4 (Floor 30):** 难以杀灭(9) capped each hit at 9 damage. Survived at 2HP after 9 rounds of grueling combat. 原始力量 was useless here (16→9 cap).
+2. **盛碗虫+地道虫 (Floor 31):** 地道虫 87HP with 埋地(block persists). Required breaking 32+ block before dealing HP damage. Survived at 2HP again — barely killed it with 3-打击 combo for exactly 44 damage vs 34 effective HP.
+3. **Boss R1 setup:** Successfully played FNP + 放血+ + 痊愈药水. Good setup turn.
+4. **Boss R6 瓶中精灵:** Intentionally took lethal to trigger fairy (27HP). Correct strategic use.
+5. **Boss R9 death:** 19HP, 0 block, 24 incoming. No block cards available. GG.
+
+### What Went Right
+- 无惧疼痛 + 烙印 + 邪眼+ synergy was excellent for defense (22挡/turn reliably)
+- 惊逃 Power provided consistent free damage every turn
+- 原始力量 → 巨石 combo dealt 51 damage in one free turn (R4 of boss)
+- Proper use of 瓶中精灵 for HP restoration
+- Survived two impossible fights (外骨骼虫 at 2HP, 地道虫 at 2HP)
+- Long者兰伟德 event: traded 干瘪之手 for 双截棍+小邮箱 (net +1 relic)
+
+### What Went Wrong
+- **Entered Act 2 with low HP throughout** — never above 40% HP after Floor 27
+- **No scaling damage for Boss** — needed 重刀/恶魔形态/极限突破 for 321HP target
+- **重振精神 consumed engine pieces** — lost 薪火之源 permanently when used for emergency block
+- **符文金字塔 anti-synergy** — retaining 狂乱逃离 cards clogged hand, wasting energy on escape instead of damage
+- **No vuln maintenance** — 痛击+ alone couldn't maintain vuln uptime on boss for consistent 1.5x damage

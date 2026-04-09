@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Godot;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.HoverTips;
@@ -13,6 +14,133 @@ namespace STS2_MCP;
 
 public static partial class McpMod
 {
+    // ── Card Effect Classification ─────────────────────────────────────
+    // Whitelist: card.Id.Entry → known effect tags.
+    // Checked first; description keyword fallback only for unlisted cards.
+    private static readonly Dictionary<string, string[]> CardEffectMap = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Ironclad — debuffs
+        ["Bash"]            = new[] { "applies_vulnerable" },
+        ["Thunderclap"]     = new[] { "applies_vulnerable" },
+        ["Uppercut"]        = new[] { "applies_vulnerable", "applies_weak" },
+        ["Disarm"]          = new[] { "applies_weak" },
+        ["Clothesline"]     = new[] { "applies_weak" },
+        ["Shockwave"]       = new[] { "applies_vulnerable", "applies_weak" },
+        ["Intimidate"]      = new[] { "applies_weak" },
+
+        // Ironclad — draw / card generation
+        ["Offering"]        = new[] { "draws_cards", "gains_energy", "has_randomness" },
+        ["BurningPact"]     = new[] { "draws_cards", "exhausts_cards", "has_randomness" },
+        ["BattleTrance"]    = new[] { "draws_cards" },
+        ["ShrugItOff"]      = new[] { "draws_cards", "gains_block" },
+        ["PommelStrike"]    = new[] { "draws_cards" },
+        ["Immolate"]        = new[] { "draws_cards" },
+        ["SecondWind"]      = new[] { "exhausts_cards", "gains_block" },
+        ["DarkEmbrace"]     = new[] { "draws_cards", "is_power" },
+        ["Brutality"]       = new[] { "draws_cards", "is_power" },
+        ["Juggernaut"]      = new[] { "is_power" },
+        ["Havoc"]           = new[] { "has_randomness" },
+
+        // Ironclad — strength / energy
+        ["Inflame"]         = new[] { "gains_strength", "is_power" },
+        ["DemonForm"]       = new[] { "gains_strength", "is_power" },
+        ["SpotWeakness"]    = new[] { "gains_strength" },
+        ["LimitBreak"]      = new[] { "gains_strength" },
+        ["Bloodletting"]    = new[] { "gains_energy" },
+        ["SeeingRed"]       = new[] { "gains_energy", "exhausts_cards" },
+        ["Berserk"]         = new[] { "gains_energy", "is_power" },
+
+        // Ironclad — block
+        ["Defend_R"]        = new[] { "gains_block" },
+        ["TrueGrit"]        = new[] { "gains_block", "exhausts_cards" },
+        ["Impervious"]      = new[] { "gains_block", "exhausts_cards" },
+        ["GhostlyArmor"]    = new[] { "gains_block", "exhausts_cards" },
+        ["FlameBarrier"]    = new[] { "gains_block" },
+        ["Metallicize"]     = new[] { "gains_block", "is_power" },
+        ["Barricade"]       = new[] { "is_power" },
+        ["Entrench"]        = new[] { "gains_block" },
+
+        // Ironclad — exhaust synergy
+        ["Corruption"]      = new[] { "is_power" },
+        ["FeelNoPain"]      = new[] { "gains_block", "is_power" },
+        ["DarkEmbrace_FNP"] = new[] { "draws_cards", "is_power" },
+        ["Sentinel"]        = new[] { "gains_block", "gains_energy", "exhausts_cards" },
+        ["Exhume"]          = new[] { "has_randomness" },
+
+        // Ironclad — X-cost
+        ["Whirlwind"]       = new[] { "is_x_cost" },
+        ["FiendFire"]       = new[] { "is_x_cost", "exhausts_cards" },
+
+        // Generic / multi-class
+        ["Cleave"]          = new string[] { },
+        ["Strike_R"]        = new string[] { },
+        ["TwinStrike"]      = new string[] { },
+        ["HeavyBlade"]      = new string[] { },
+        ["Carnage"]         = new string[] { },
+        ["Bludgeon"]        = new string[] { },
+        ["Rampage"]         = new string[] { },
+        ["BodySlam"]        = new string[] { },
+        ["Headbutt"]        = new string[] { },
+        ["Anger"]           = new string[] { },
+        ["Clash"]           = new string[] { },
+        ["Armaments"]       = new string[] { },
+        ["Flex"]            = new[] { "gains_strength" },
+        ["Warcry"]          = new[] { "draws_cards" },
+        ["RecklessCharge"]  = new[] { "draws_cards" },
+
+        // Potions that buff (handled separately, but kept for consistency)
+    };
+
+    /// <summary>
+    /// Classify a hand card into structured effect tags.
+    /// Priority: whitelist by Id → fallback keyword scan on description.
+    /// </summary>
+    internal static List<string> ClassifyCardEffects(CardModel card)
+    {
+        // 1. Whitelist lookup — strip trailing "+" from upgraded id
+        string rawId = card.Id.Entry;
+        string baseId = rawId.EndsWith("+") ? rawId[..^1] : rawId;
+
+        if (CardEffectMap.TryGetValue(baseId, out var mapped))
+        {
+            var tags = new List<string>(mapped);
+            // Supplement with structural checks not in the map
+            AddStructuralTags(card, tags);
+            return tags;
+        }
+
+        // 2. Fallback: description keyword scan
+        string desc = SafeGetCardDescription(card) ?? "";
+        var fallback = new List<string>();
+
+        if (desc.Contains("易伤") || desc.Contains("Vulnerable"))   fallback.Add("applies_vulnerable");
+        if (desc.Contains("虚弱") || desc.Contains("Weak"))         fallback.Add("applies_weak");
+        if (Regex.IsMatch(desc, @"抽\s*\d+\s*张|[Dd]raw\s+\d+"))   fallback.Add("draws_cards");
+        if (desc.Contains("力量") && !desc.Contains("失去力量"))      fallback.Add("gains_strength");
+        if (desc.Contains("能量") || desc.Contains("[Energy]"))      fallback.Add("gains_energy");
+        if (desc.Contains("格挡") || desc.Contains("Block"))        fallback.Add("gains_block");
+        if (desc.Contains("消耗") || desc.Contains("Exhaust"))      fallback.Add("exhausts_cards");
+        if (desc.Contains("随机") || desc.Contains("Random"))       fallback.Add("has_randomness");
+
+        // Draw implies randomness (new cards from draw pile)
+        if (fallback.Contains("draws_cards") && !fallback.Contains("has_randomness"))
+            fallback.Add("has_randomness");
+
+        AddStructuralTags(card, fallback);
+        return fallback;
+    }
+
+    private static void AddStructuralTags(CardModel card, List<string> tags)
+    {
+        if (card.Type == CardType.Power && !tags.Contains("is_power"))
+            tags.Add("is_power");
+        if (card.EnergyCost.CostsX && !tags.Contains("is_x_cost"))
+            tags.Add("is_x_cost");
+
+        int cost = card.EnergyCost.CostsX ? 99 : card.EnergyCost.GetAmountToSpend();
+        if (cost == 0 && !tags.Contains("is_free"))
+            tags.Add("is_free");
+    }
     private static string? SafeGetCardDescription(CardModel card, PileType pile = PileType.Hand)
     {
         try { return StripRichTextTags(card.GetDescriptionForPile(pile)).Replace("\n", " "); }

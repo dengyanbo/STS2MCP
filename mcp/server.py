@@ -579,6 +579,61 @@ def _find_card_in_hand(
     return None
 
 
+def _card_has_effect(card: dict, effect: str) -> bool:
+    """Check if a hand card dict has a specific effect tag."""
+    effects = card.get("effects", [])
+    return isinstance(effects, list) and effect in effects
+
+
+def _validate_batch_order(actions: list[dict], initial_hand: list[dict]) -> list[str]:
+    """Pre-validate batch action order. Returns warning strings (non-blocking)."""
+    warnings: list[str] = []
+    if not initial_hand:
+        return warnings
+
+    # Build a mapping: action index → card data (for play_card actions only)
+    play_cards: list[tuple[int, dict]] = []  # (action_index, card_data)
+    for i, action in enumerate(actions):
+        if action.get("type") == "play_card":
+            idx = action.get("card_index", -1)
+            if 0 <= idx < len(initial_hand):
+                play_cards.append((i, initial_hand[idx]))
+
+    if not play_cards:
+        return warnings
+
+    # Check: debuff cards (applies_vulnerable/applies_weak) should come before attack cards
+    first_vuln_pos = None
+    first_weak_pos = None
+    first_attack_pos = None
+
+    for action_i, (pos, card) in enumerate(play_cards):
+        card_type = card.get("type", "")
+        if _card_has_effect(card, "applies_vulnerable") and first_vuln_pos is None:
+            first_vuln_pos = action_i
+        if _card_has_effect(card, "applies_weak") and first_weak_pos is None:
+            first_weak_pos = action_i
+        if card_type == "Attack" and first_attack_pos is None:
+            first_attack_pos = action_i
+
+    if first_vuln_pos is not None and first_attack_pos is not None and first_vuln_pos > first_attack_pos:
+        vuln_name = play_cards[first_vuln_pos][1].get("name", "?")
+        atk_name = play_cards[first_attack_pos][1].get("name", "?")
+        warnings.append(
+            f"⚠️ SUBOPTIMAL ORDER: {vuln_name} (Vulnerable) at action #{first_vuln_pos} "
+            f"but {atk_name} (Attack) at action #{first_attack_pos} — "
+            f"play Vulnerable FIRST for +50% damage on subsequent attacks!"
+        )
+
+    if first_weak_pos is not None and first_attack_pos is not None and first_weak_pos > first_attack_pos:
+        weak_name = play_cards[first_weak_pos][1].get("name", "?")
+        warnings.append(
+            f"⚠️ SUBOPTIMAL ORDER: {weak_name} (Weak) should be played before attacks."
+        )
+
+    return warnings
+
+
 @mcp.tool()
 async def combat_batch(actions: list[dict], reason: str | None = None) -> str:
     """[Combat] Execute multiple combat actions in a single call.
@@ -595,12 +650,15 @@ async def combat_batch(actions: list[dict], reason: str | None = None) -> str:
     ⚠️ IMPORTANT SAFETY RULES:
     - When selecting multiple cards (hand_select), select from HIGHEST
       index to LOWEST to avoid index shifting.
-    - Do NOT batch actions that involve randomness (draw effects,
-      random potions, etc.). Execute them individually, call
-      get_game_state() to see the result, then decide the next step.
-      E.g. 燃烧契约 draws new cards — don't pre-plan plays after it.
+    - Cards with `draws_cards` or `has_randomness` effects will AUTO-PAUSE
+      the batch after they are played (if more play_card actions follow).
+      The paused response includes the updated game state — re-plan from there.
+      Best practice: put draw cards LAST in the batch (before end_turn only).
     - If an action fails to register, fall back to individual tool
       calls (combat_play_card / use_potion) instead of retrying batch.
+    - The batch PRE-VALIDATES card order: if debuff cards (Vulnerable/Weak)
+      are placed AFTER attack cards, a ⚠️ SUBOPTIMAL ORDER warning is emitted.
+      Follow the `suggested_play_order` from game state for optimal sequencing.
 
     Args:
         actions: Ordered list of action dicts. Each dict has:
@@ -632,6 +690,13 @@ async def combat_batch(actions: list[dict], reason: str | None = None) -> str:
     except Exception:
         pass  # fallback: direct index mode (original behaviour)
 
+    # ------------------------------------------------------------------
+    # 1b. Pre-validate batch order (non-blocking warnings)
+    # ------------------------------------------------------------------
+    order_warnings = _validate_batch_order(actions, initial_hand)
+    for w in order_warnings:
+        results.append(w)
+
     # Pre-resolve: for each play_card action, record the card identity
     # (id + is_upgraded) that the caller intended, looked up by index in
     # the initial hand snapshot.
@@ -646,6 +711,7 @@ async def combat_batch(actions: list[dict], reason: str | None = None) -> str:
                     "name": c.get("name", ""),
                     "is_upgraded": c.get("is_upgraded", False),
                     "original_index": idx,
+                    "effects": c.get("effects", []),
                 })
             else:
                 # Index out of range or no snapshot — will use raw index
@@ -656,6 +722,8 @@ async def combat_batch(actions: list[dict], reason: str | None = None) -> str:
     # Live hand state — updated after each successful action from the
     # game_state embedded in the action response.
     current_hand: list[dict] = list(initial_hand)
+    batch_paused = False
+    pause_reason = ""
 
     for i, action in enumerate(actions):
         action_type = action.get("type", "")
@@ -719,6 +787,32 @@ async def combat_batch(actions: list[dict], reason: str | None = None) -> str:
             results.append(f"[{i}] ✗ {_handle_error(e)}")
             break
 
+        # ----------------------------------------------------------
+        # Auto-pause: if this card draws/generates cards or has
+        # randomness, stop the batch so AI can re-plan with new hand.
+        # Only pause if there are more play_card actions remaining.
+        # ----------------------------------------------------------
+        if action_type == "play_card" and _intended[i] is not None:
+            effects = _intended[i].get("effects", [])  # type: ignore[union-attr]
+            card_name = _intended[i].get("name", "?")  # type: ignore[union-attr]
+            has_draw = isinstance(effects, list) and (
+                "draws_cards" in effects or "has_randomness" in effects
+            )
+            remaining = actions[i + 1:]
+            has_remaining_plays = any(
+                a.get("type") == "play_card" for a in remaining
+            )
+            if has_draw and has_remaining_plays:
+                batch_paused = True
+                pause_reason = card_name
+                remaining_actions = [a for a in remaining if a.get("type") != "end_turn"]
+                results.append(
+                    f"\n⚠️ BATCH PAUSED after [{card_name}] (draw/random effect). "
+                    f"Hand has changed — you MUST re-query state and re-plan.\n"
+                    f"Remaining un-executed actions: {json.dumps(remaining_actions, ensure_ascii=False)}"
+                )
+                break
+
         # Wait for game animation to complete between actions.
         # 300ms handles most card animations; complex chains (AOE,
         # multi-draw, exhaust triggers) may need the re-resolve fallback.
@@ -726,7 +820,7 @@ async def combat_batch(actions: list[dict], reason: str | None = None) -> str:
             await asyncio.sleep(0.3)
 
     # If the last action was end_turn, wait for enemy turn to complete
-    if actions and actions[-1].get("type") == "end_turn":
+    if not batch_paused and actions and actions[-1].get("type") == "end_turn":
         try:
             for _ in range(20):
                 await asyncio.sleep(0.25)
@@ -742,8 +836,11 @@ async def combat_batch(actions: list[dict], reason: str | None = None) -> str:
         except Exception:
             pass
 
-    # Get final state
+    # Get final state (after pause, auto-fetch fresh state for re-planning)
     try:
+        if batch_paused:
+            # Wait a bit longer for draw animations to complete
+            await asyncio.sleep(0.5)
         state = await _get({"format": "markdown"})
     except Exception:
         state = "(Could not fetch final state)"

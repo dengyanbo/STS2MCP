@@ -443,6 +443,16 @@ public static partial class McpMod
 
                     if (hints.Count > 0)
                         battle["hints"] = hints;
+
+                    // Suggested play order with energy simulation
+                    if (pcs != null)
+                    {
+                        var (order, orderHints) = BuildSuggestedPlayOrder(pcs, anyAttacking, unblocked > 0);
+                        if (order.Count > 0)
+                            battle["suggested_play_order"] = order;
+                        foreach (var h in orderHints)
+                            hints.Add(h);
+                    }
                 }
                 catch { /* analysis is best-effort */ }
             }
@@ -616,6 +626,7 @@ public static partial class McpMod
         state["target_type"] = card.TargetType.ToString();
         state["can_play"] = unplayableReason == UnplayableReason.None;
         state["unplayable_reason"] = unplayableReason != UnplayableReason.None ? unplayableReason.ToString() : null;
+        state["effects"] = ClassifyCardEffects(card);
         return state;
     }
 
@@ -626,6 +637,215 @@ public static partial class McpMod
             int j = Random.Shared.Next(i + 1);
             (list[i], list[j]) = (list[j], list[i]);
         }
+    }
+
+    // ── Suggested Play Order with Energy Simulation ────────────────────
+    /// <summary>
+    /// Sorts playable hand cards by strategic priority and simulates energy
+    /// spending to mark which cards can actually be played in sequence.
+    /// Returns (ordered list of card entries, extra hint strings).
+    /// </summary>
+    private static (List<Dictionary<string, object?>>, List<string>) BuildSuggestedPlayOrder(
+        PlayerCombatState pcs, bool anyAttacking, bool hasUnblockedDamage)
+    {
+        var entries = new List<(int index, string name, List<string> effects, int cost, bool costsX, int tier, string reason)>();
+
+        int ci = 0;
+        foreach (var card in pcs.Hand.Cards)
+        {
+            if (card.CanPlay(out _, out _))
+            {
+                var effects = ClassifyCardEffects(card);
+                bool costsX = card.EnergyCost.CostsX;
+                int cost = costsX ? 0 : card.EnergyCost.GetAmountToSpend(); // X-cost accounted later
+
+                int tier = GetPlayTier(effects, card.Type, costsX, anyAttacking, hasUnblockedDamage);
+                string reason = GetTierReason(tier, effects);
+                string name = SafeGetText(() => card.Title) ?? card.Id.Entry;
+
+                entries.Add((ci, name, effects, cost, costsX, tier, reason));
+            }
+            ci++;
+        }
+
+        // Sort by tier (ascending = highest priority first), then by cost (cheaper first within tier)
+        entries.Sort((a, b) =>
+        {
+            int cmp = a.tier.CompareTo(b.tier);
+            return cmp != 0 ? cmp : a.cost.CompareTo(b.cost);
+        });
+
+        // Energy simulation pass
+        int energy = pcs.Energy;
+        var result = new List<Dictionary<string, object?>>();
+        var orderNames = new List<string>();
+        bool hasBatchBreak = false;
+        string? batchBreakCard = null;
+
+        foreach (var (index, name, effects, cost, costsX, tier, reason) in entries)
+        {
+            bool skipped = false;
+            int actualCost = costsX ? energy : cost; // X-cost consumes all remaining
+
+            if (costsX)
+            {
+                // X-cost always goes last; uses all remaining energy
+                actualCost = energy;
+            }
+
+            if (actualCost > energy)
+                skipped = true;
+
+            int energyAfter = skipped ? energy : energy - actualCost;
+
+            // Detect energy-generating cards
+            bool generatesEnergy = effects.Contains("gains_energy");
+
+            var entry = new Dictionary<string, object?>
+            {
+                ["index"] = index,
+                ["name"] = name,
+                ["tier"] = tier,
+                ["cost"] = costsX ? "X" : (object)cost,
+                ["reason"] = reason,
+                ["energy_after"] = skipped ? (object?)null : energyAfter,
+                ["skipped_insufficient_energy"] = skipped,
+            };
+
+            // Mark batch break point for draw/random cards
+            if (effects.Contains("draws_cards") || effects.Contains("has_randomness"))
+            {
+                entry["batch_break"] = true;
+                if (!hasBatchBreak) batchBreakCard = name;
+                hasBatchBreak = true;
+            }
+
+            result.Add(entry);
+
+            if (!skipped)
+            {
+                energy = energyAfter;
+                // Estimate energy gain from known cards
+                if (generatesEnergy)
+                    energy += EstimateEnergyGain(effects, name);
+
+                orderNames.Add($"[{index}]{name}({(costsX ? "X" : cost.ToString())}费)");
+            }
+        }
+
+        // Build hint strings
+        var hints = new List<string>();
+        if (orderNames.Count > 0)
+        {
+            hints.Add($"⚡ PLAY ORDER: {string.Join(" → ", orderNames)}");
+        }
+
+        // Warn about debuff-before-attack ordering
+        int firstVulnTier = -1;
+        int firstAttackTier = -1;
+        foreach (var e in entries)
+        {
+            if (e.effects.Contains("applies_vulnerable") && firstVulnTier < 0)
+                firstVulnTier = e.tier;
+            if (e.tier == 6 && firstAttackTier < 0) // tier 6 = attack
+                firstAttackTier = e.tier;
+        }
+        // Check if any attack card appears before a vuln card in the original hand order
+        // (this would happen if the AI doesn't follow suggested order)
+        bool hasVuln = entries.Exists(e => e.effects.Contains("applies_vulnerable"));
+        bool hasAttack = entries.Exists(e => e.tier == 6);
+        if (hasVuln && hasAttack)
+        {
+            var vulnCard = entries.Find(e => e.effects.Contains("applies_vulnerable"));
+            hints.Add($"🎯 VULN FIRST: Play [{vulnCard.index}]{vulnCard.name} before attack cards for +50% damage!");
+        }
+
+        if (hasBatchBreak && batchBreakCard != null)
+        {
+            hints.Add($"🃏 DRAW BREAK: {batchBreakCard} draws/generates cards — play it, then re-plan with new hand. Do NOT batch actions after it.");
+        }
+
+        return (result, hints);
+    }
+
+    private static int GetPlayTier(List<string> effects, CardType type, bool costsX,
+        bool anyAttacking, bool hasUnblockedDamage)
+    {
+        // Tier 0: free non-draw utility (free value)
+        if (effects.Contains("is_free") && !effects.Contains("draws_cards")
+            && !effects.Contains("has_randomness") && type != CardType.Power)
+            return 0;
+
+        // Tier 1: draw/card-generation (see more cards, re-plan)
+        if (effects.Contains("draws_cards"))
+            return 1;
+
+        // Tier 2: Power cards (investment, earlier = more value)
+        if (effects.Contains("is_power") || type == CardType.Power)
+            return 2;
+
+        // Tier 3: debuff cards (vulnerable/weak before attacks)
+        if (effects.Contains("applies_vulnerable") || effects.Contains("applies_weak"))
+            return 3;
+
+        // Tier 4: strength/energy buffs (before attacks)
+        if (effects.Contains("gains_strength") || effects.Contains("gains_energy"))
+            return 4;
+
+        // Tier 5: attack cards
+        if (type == CardType.Attack)
+            return costsX ? 7 : 5; // X-cost attacks go last (tier 7)
+
+        // Tier 6: block cards
+        if (effects.Contains("gains_block") || type == CardType.Skill)
+        {
+            // If no enemies attacking, block is lowest priority
+            if (!anyAttacking) return 8;
+            return 6;
+        }
+
+        // Tier 7: X-cost (consume remaining energy)
+        if (costsX) return 7;
+
+        // Tier 8: everything else
+        return 8;
+    }
+
+    private static string GetTierReason(int tier, List<string> effects)
+    {
+        return tier switch
+        {
+            0 => "free utility — play first for free value",
+            1 => "draws cards — play early, re-plan with new hand ⚠️BATCH_BREAK",
+            2 => "power card — invest early for max value",
+            3 => effects.Contains("applies_vulnerable")
+                ? "applies Vulnerable — +50% damage on subsequent attacks!"
+                : "applies Weak — reduce enemy damage",
+            4 => effects.Contains("gains_strength")
+                ? "gains Strength — buff before attacks"
+                : "gains Energy — more plays this turn",
+            5 => "attack — play after debuffs/buffs",
+            6 => "block — play only if needed",
+            7 => "X-cost — play last, uses remaining energy",
+            8 => "low priority — play if energy permits",
+            _ => ""
+        };
+    }
+
+    /// <summary>
+    /// Estimate energy gained from known energy-generating cards.
+    /// Conservative estimates for simulation purposes.
+    /// </summary>
+    private static int EstimateEnergyGain(List<string> effects, string name)
+    {
+        if (!effects.Contains("gains_energy")) return 0;
+        // Known energy generators (conservative estimates)
+        string lower = name.ToLowerInvariant();
+        if (lower.Contains("祭品") || lower.Contains("offering")) return 2;
+        if (lower.Contains("放血") || lower.Contains("bloodletting")) return 2;
+        if (lower.Contains("看破红尘") || lower.Contains("seeing red")) return 2;
+        if (lower.Contains("哨兵") || lower.Contains("sentinel")) return 2;
+        return 1; // conservative default
     }
 
     private static List<Dictionary<string, object?>> BuildPileCardList(IEnumerable<CardModel> cards, PileType pile)

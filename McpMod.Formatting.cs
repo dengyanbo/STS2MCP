@@ -195,7 +195,9 @@ public static partial class McpMod
                     string keywords = card.TryGetValue("keywords", out var kw) && kw is List<string> kwList && kwList.Count > 0
                         ? $" [{string.Join(", ", kwList)}]" : "";
                     string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
-                    sb.AppendLine($"- [{card["index"]}] **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {playable}{keywords} - {card["description"]} (target: {card["target_type"]})");
+                    string effects = card.TryGetValue("effects", out var eff) && eff is List<string> effList && effList.Count > 0
+                        ? $" {{{string.Join(", ", effList)}}}" : "";
+                    sb.AppendLine($"- [{card["index"]}] **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {playable}{keywords}{effects} - {card["description"]} (target: {card["target_type"]})");
                 }
                 sb.AppendLine();
             }
@@ -295,6 +297,20 @@ public static partial class McpMod
             sb.AppendLine("## 💡 Hints");
             foreach (var hint in hints)
                 sb.AppendLine($"- {hint}");
+            sb.AppendLine();
+        }
+
+        // Suggested play order
+        if (battle.TryGetValue("suggested_play_order", out var spoObj) && spoObj is List<Dictionary<string, object?>> spo && spo.Count > 0)
+        {
+            sb.AppendLine("## ⚡ Suggested Play Order");
+            foreach (var entry in spo)
+            {
+                string skipped = entry.TryGetValue("skipped_insufficient_energy", out var sk) && sk is true ? " ❌SKIP(no energy)" : "";
+                string batchBreak = entry.TryGetValue("batch_break", out var bb) && bb is true ? " ⚠️BATCH_BREAK" : "";
+                string energyAfter = entry.TryGetValue("energy_after", out var ea) && ea != null ? $" → {ea} energy left" : "";
+                sb.AppendLine($"- [{entry["index"]}] **{entry["name"]}** ({entry["cost"]} energy) T{entry["tier"]}: {entry["reason"]}{energyAfter}{skipped}{batchBreak}");
+            }
             sb.AppendLine();
         }
     }

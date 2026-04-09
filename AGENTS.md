@@ -36,5 +36,9 @@ The learnings file has a **15-entry cap per section** to prevent context bloat.
 - **Combat analysis** — `combat_analysis` section with damage estimation, unblocked damage, and HP projections
 - **Contextual hints** — `hints` array with situational advice (lethal warnings, kill opportunities, etc.)
 - **Batch operations** — `combat_batch` for multiple actions per call; `rewards_claim_all` for non-card rewards
+- **Card effect tags** — Each hand card includes an `effects` array (e.g. `applies_vulnerable`, `draws_cards`, `gains_strength`, `is_power`, `is_x_cost`) for structured decision-making
+- **Suggested play order** — `suggested_play_order` in combat state ranks playable cards by strategic priority with energy simulation; follow this for optimal sequencing (debuffs before attacks, draw cards first, X-cost last)
+- **Batch auto-pause** — `combat_batch` auto-detects cards with `draws_cards`/`has_randomness` effects and pauses after them, returning updated state + remaining actions for re-planning
+- **Batch order validation** — `combat_batch` pre-validates card order and emits `⚠️ SUBOPTIMAL ORDER` warnings when debuff cards are placed after attacks
 - **Live narration tool** — Call `narrate(text="...")` BEFORE every significant decision to share your detailed strategic thinking with viewers. Write 2-5 sentences in natural Chinese analyzing the situation, your options, and why you're choosing a particular path. This is the primary way viewers understand your gameplay.
 - **Auto mistake detection** — When a new combat round starts (round 2+), the MCP server auto-injects a `[TURN_REVIEW_PENDING]` block into tool responses containing the previous turn's summary. The main agent fire-and-forgets a task sub-agent to analyze it; the sub-agent posts any mistakes directly to the displayer via HTTP. The main agent never blocks on mistake analysis.
