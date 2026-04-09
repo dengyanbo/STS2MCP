@@ -51,6 +51,40 @@ Invoke-RestMethod -Uri 'http://localhost:15580/api/events' -Method Post -Content
 )
 ```
 
+### 第零步 B：战斗结束战略复盘（火后即忘）
+**战斗结束时自动触发。** 当战斗结束（转为奖励/地图/事件画面）时，MCP 会在工具响应中自动注入 `[COMBAT_REVIEW_PENDING]...[/COMBAT_REVIEW_PENDING]` 块，包含整场战斗的战略摘要。
+
+**主 agent 规则：**
+1. 看到 `[COMBAT_REVIEW_PENDING]` 块时，**立即 fire-and-forget 一个 task sub-agent**，将块内全部内容作为输入。
+2. **不等待结果**，直接继续正常游戏流程（领取奖励等）。
+
+**Sub-agent 调用模板：**
+```
+task(
+  agent_type="task",
+  name="combat-review",
+  description="Strategic combat analysis",
+  prompt="""你是杀戮尖塔2战略分析专家。从全局角度分析以下整场战斗是否存在战略级失误。
+
+{将 [COMBAT_REVIEW_PENDING] 块内容粘贴到这里}
+
+战略分析要点（跨回合模式识别）：
+1. **HP效率**: 总HP损失是否合理？哪些回合承受了不必要的伤害？
+2. **击杀优先级**: 多敌人战斗中是否正确集火？是否过早/过晚切换目标？
+3. **能力牌时机**: Power牌是否在第一时间打出？延迟打Power损失多少累积价值？
+4. **减益维护**: 易伤/虚弱是否在关键伤害回合维持？是否有减益中断导致的损失？
+5. **资源浪费**: 每回合剩余能量模式——是否系统性浪费能量？
+6. **防御过度/不足**: 是否在非攻击回合浪费能量格挡？是否在攻击回合格挡不足？
+7. **药水时机**: 药水是否在最关键时刻使用？是否可以更早/更晚用？
+8. **击杀窗口**: 是否错过了提前击杀的机会（差几点伤害就能少承受一回合攻击）？
+
+只报告**确定的战略级失误**。单回合内的小操作失误由回合分析处理，这里关注跨多回合的模式和决策。
+如果发现失误，用 PowerShell 调用 displayer API 上报：
+Invoke-RestMethod -Uri 'http://localhost:15580/api/events' -Method Post -ContentType 'application/json' -Body '{"tool":"report_mistake","params":{"text":"📊 [战略] 具体战略失误描述","turn":0},"result":"OK"}'
+如果没有战略失误，不做任何操作。"""
+)
+```
+
 ### 第一步：审视战场（→ narrate 📍 局势总结）
 打牌前分析：你的 HP/格挡/能量/手牌/药水/遗物/状态 → 敌人 HP/格挡/意图/增减益/entity_id → **能否本回合击杀？能则跳过格挡。**
 

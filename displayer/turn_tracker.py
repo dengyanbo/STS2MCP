@@ -138,6 +138,169 @@ class CombatTurnTracker:
     def format_last_turn_summary(self) -> str | None:
         return self.format_turn_summary(self.get_last_turn())
 
+    def format_combat_summary(self) -> str | None:
+        """Format a full-combat strategic summary across ALL completed turns.
+
+        Used for post-combat strategic analysis — identifies cross-turn patterns
+        like wasted resources, missed kill windows, suboptimal target focus, etc.
+        """
+        turns = self._completed_turns
+        if not turns:
+            return None
+
+        lines = ["# 战斗全局复盘数据"]
+
+        # ── Overall stats ──────────────────────────────────────────────
+        first_state = turns[0]["start_state"]
+        last_state = turns[-1]["result_state"]
+        fp = first_state.get("player", {})
+        lp = last_state.get("player", {})
+
+        hp_start = fp.get("hp", 0)
+        hp_end = lp.get("hp", 0)
+        max_hp = fp.get("max_hp", 0)
+        hp_lost = hp_start - hp_end
+        total_rounds = len(turns)
+
+        lines.append(f"\n## 总览")
+        lines.append(f"- 总回合数: {total_rounds}")
+        lines.append(f"- HP变化: {hp_start}/{max_hp} → {hp_end}/{max_hp} (损失{hp_lost})")
+        lines.append(f"- 战损率: {hp_lost / max_hp * 100:.0f}%" if max_hp > 0 else "- 战损率: N/A")
+
+        # Starting enemies
+        first_enemies = first_state.get("battle", {}).get("enemies", [])
+        if first_enemies:
+            total_ehp = sum(e.get("hp", 0) for e in first_enemies)
+            lines.append(f"- 初始敌人总HP: {total_ehp}")
+            for e in first_enemies:
+                lines.append(f"  - {e.get('name', '?')}: {e.get('hp', '?')}HP")
+
+        # Potions used
+        potions_used: list[str] = []
+        # Energy wasted (turns where energy > 0 at end of player actions)
+        energy_wasted_turns: list[int] = []
+
+        for t in turns:
+            for action in t.get("actions", []):
+                tool = action.get("tool", "")
+                if tool in ("use_potion", "mp_use_potion"):
+                    slot = action["params"].get("slot", "?")
+                    potions_used.append(f"T{t['turn']}:药水[{slot}]")
+                elif tool == "combat_batch":
+                    for ba in action["params"].get("actions", []):
+                        if ba.get("type") == "use_potion":
+                            potions_used.append(f"T{t['turn']}:药水[{ba.get('slot', '?')}]")
+
+        if potions_used:
+            lines.append(f"- 药水使用: {', '.join(potions_used)}")
+        else:
+            lines.append("- 药水使用: 无")
+
+        # ── Per-turn timeline ──────────────────────────────────────────
+        lines.append(f"\n## 每回合时间线")
+        for t in turns:
+            turn_num = t["turn"]
+            start = t["start_state"]
+            result = t["result_state"]
+            sp = start.get("player", {})
+            rp = result.get("player", {})
+
+            hp_s = sp.get("hp", 0)
+            hp_e = rp.get("hp", 0)
+            energy = sp.get("energy", 0)
+            hp_diff = hp_e - hp_s
+
+            # Summarize actions concisely
+            action_strs: list[str] = []
+            hand = list(sp.get("hand", []))
+            for action in t.get("actions", []):
+                action_strs.append(self._fmt_action(action, hand))
+
+            # Enemy intent summary
+            enemies = start.get("battle", {}).get("enemies", [])
+            intents: list[str] = []
+            for e in enemies:
+                intents.append(f"{e.get('name', '?')}:{self._fmt_enemy_intent_short(e)}")
+
+            # Enemy HP changes
+            ehp_changes: list[str] = []
+            start_enemies = {
+                e.get("entity_id", ""): e
+                for e in start.get("battle", {}).get("enemies", [])
+            }
+            for e in result.get("battle", {}).get("enemies", []):
+                eid = e.get("entity_id", "")
+                se = start_enemies.get(eid)
+                if se:
+                    ehs, ehe = se.get("hp", 0), e.get("hp", 0)
+                    if ehs != ehe:
+                        ehp_changes.append(f"{e.get('name', '?')}:{ehs}→{ehe}")
+
+            hp_str = f"HP{hp_diff:+d}" if hp_diff != 0 else "HP不变"
+            lines.append(
+                f"\n### T{turn_num} ({energy}能量, {hp_str})"
+            )
+            lines.append(f"- 敌意: {', '.join(intents) if intents else '无'}")
+            lines.append(f"- 操作: {' → '.join(action_strs) if action_strs else '无操作'}")
+            if ehp_changes:
+                lines.append(f"- 敌HP: {', '.join(ehp_changes)}")
+            if t.get("narration"):
+                # Truncate narration to first 100 chars for summary
+                narr = t["narration"][:120]
+                if len(t["narration"]) > 120:
+                    narr += "..."
+                lines.append(f"- AI思考: {narr}")
+
+        # ── Strategic analysis data ────────────────────────────────────
+        lines.append(f"\n## 分析辅助数据")
+
+        # Damage taken per turn
+        dmg_list: list[str] = []
+        for t in turns:
+            sp = t["start_state"].get("player", {})
+            rp = t["result_state"].get("player", {})
+            dmg = sp.get("hp", 0) - rp.get("hp", 0)
+            if dmg > 0:
+                dmg_list.append(f"T{t['turn']}:-{dmg}")
+        if dmg_list:
+            lines.append(f"- 受伤回合: {', '.join(dmg_list)} (总计-{hp_lost})")
+        else:
+            lines.append("- 受伤回合: 无（零战损）")
+
+        # Turns where enemies were buffing/sleeping but player blocked
+        lines.append(f"- 请检查: 敌人不攻击的回合是否打了格挡牌（浪费能量）")
+        lines.append(f"- 请检查: 减益牌(易伤/虚弱)是否在攻击牌之前打出")
+        lines.append(f"- 请检查: 能力牌(Power)是否尽早打出")
+        lines.append(f"- 请检查: 是否有更优的集火策略（先杀高威胁/低HP目标）")
+        lines.append(f"- 请检查: 药水使用时机（是否过早/过晚/浪费在普通怪上）")
+
+        return "\n".join(lines)
+
+    @staticmethod
+    def _fmt_enemy_intent_short(e: dict) -> str:
+        """Format enemy intent in short form for timeline."""
+        intents = e.get("intents", [])
+        if not intents:
+            intent = e.get("intent", {})
+            if isinstance(intent, dict):
+                itype = intent.get("type", "?")
+                dmg = intent.get("damage")
+                hits = intent.get("hits", 1)
+                if dmg:
+                    return f"攻击{dmg}×{hits}" if hits and hits > 1 else f"攻击{dmg}"
+                return itype
+            return "?"
+
+        parts = []
+        for intent in intents:
+            itype = intent.get("type", "?")
+            label = intent.get("label", "")
+            if itype == "Attack" and label:
+                parts.append(f"攻击{label}")
+            else:
+                parts.append(itype)
+        return "+".join(parts)
+
     def format_turn_summary(self, turn_data: dict | None) -> str | None:
         if turn_data is None:
             return None

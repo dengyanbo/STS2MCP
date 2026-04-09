@@ -82,6 +82,7 @@ _action_game_state: dict | None = None
 # ---------------------------------------------------------------------------
 _COMBAT_STATE_TYPES = frozenset({"monster", "elite", "boss"})
 _last_combat_round: int = 0
+_was_in_combat: bool = False  # Track combat → non-combat transition
 
 
 async def _fetch_turn_summary() -> str | None:
@@ -98,21 +99,37 @@ async def _fetch_turn_summary() -> str | None:
         return None
 
 
+async def _fetch_combat_summary() -> str | None:
+    """Fetch full combat strategic summary from the displayer (best-effort)."""
+    if not _displayer_enabled:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=3, trust_env=False) as client:
+            r = await client.get(f"{_displayer_url}/api/combat-summary")
+            r.raise_for_status()
+            data = r.json()
+            return data.get("summary")
+    except Exception:
+        return None
+
+
 def _detect_round_change(state: dict | None) -> int | None:
     """Check if a new combat round started. Returns new round number or None.
 
     Also resets tracking when combat ends (state_type leaves combat).
     """
-    global _last_combat_round
+    global _last_combat_round, _was_in_combat
     if state is None:
         return None
 
     state_type = state.get("state_type", "")
     if state_type not in _COMBAT_STATE_TYPES:
-        # Left combat — reset tracker
+        # Left combat — reset tracker (combat-end handled separately)
         _last_combat_round = 0
+        _was_in_combat = False
         return None
 
+    _was_in_combat = True
     battle = state.get("battle") or {}
     current_round = battle.get("round", 0)
     if current_round > _last_combat_round:
@@ -122,6 +139,19 @@ def _detect_round_change(state: dict | None) -> int | None:
         if prev > 0:
             return current_round
     return None
+
+
+def _detect_combat_end(state: dict | None) -> bool:
+    """Detect transition from combat to non-combat state. Returns True once per combat exit."""
+    global _was_in_combat
+    if state is None:
+        return False
+
+    state_type = state.get("state_type", "")
+    if state_type not in _COMBAT_STATE_TYPES and _was_in_combat:
+        _was_in_combat = False
+        return True
+    return False
 
 
 def _instrumented_tool(*deco_args, **deco_kwargs):
@@ -193,6 +223,10 @@ def _instrumented_tool(*deco_args, **deco_kwargs):
                 except Exception:
                     pass  # Logger must never break gameplay
 
+            # --- Combat-end strategic review injection --------------------
+            # Must run BEFORE _detect_round_change which resets _was_in_combat
+            combat_ended = _detect_combat_end(logger_state_obj)
+
             # --- Turn review injection ------------------------------------
             # When a new combat round is detected (round 2+), fetch the
             # previous turn's summary and append it to the result so the
@@ -207,6 +241,20 @@ def _instrumented_tool(*deco_args, **deco_kwargs):
                             + "\n\n[TURN_REVIEW_PENDING]\n"
                             + summary
                             + "\n[/TURN_REVIEW_PENDING]"
+                        )
+                except Exception:
+                    pass  # Never block gameplay
+
+            # --- Combat-end strategic review injection (after turn review) -
+            if combat_ended:
+                try:
+                    combat_summary = await _fetch_combat_summary()
+                    if combat_summary and combat_summary != "No combat data":
+                        result = (
+                            result
+                            + "\n\n[COMBAT_REVIEW_PENDING]\n"
+                            + combat_summary
+                            + "\n[/COMBAT_REVIEW_PENDING]"
                         )
                 except Exception:
                     pass  # Never block gameplay

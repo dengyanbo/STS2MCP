@@ -246,6 +246,20 @@ async def handle_combat_log(request: web.Request) -> web.Response:
     )
 
 
+async def handle_combat_summary(request: web.Request) -> web.Response:
+    """Return a full-combat strategic summary for post-combat analysis."""
+    summary = turn_tracker.format_combat_summary()
+    if summary is None:
+        return web.json_response(
+            {"status": "ok", "summary": None, "message": "No combat data available"},
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+    return web.json_response(
+        {"status": "ok", "summary": summary},
+        headers={"Access-Control-Allow-Origin": "*"},
+    )
+
+
 def create_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/", handle_index)
@@ -255,6 +269,7 @@ def create_app() -> web.Application:
     app.router.add_post("/api/clear", handle_clear)
     app.router.add_get("/api/last-turn", handle_last_turn)
     app.router.add_get("/api/combat-log", handle_combat_log)
+    app.router.add_get("/api/combat-summary", handle_combat_summary)
     app.router.add_static("/static/", Path(__file__).parent / "static")
     return app
 

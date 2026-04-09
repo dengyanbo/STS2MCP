@@ -87,6 +87,9 @@ applyTo: "**"
 - 当新战斗回合开始（第 2 回合起），MCP 会在工具响应中自动注入 `[TURN_REVIEW_PENDING]...[/TURN_REVIEW_PENDING]` 块。
 - **看到此块时**：立即 fire-and-forget 一个 `task` sub-agent（模板见战斗策略技能），将块内容作为输入，**不等待结果**，继续正常决策。
 - Sub-agent 会独立分析上回合操作，有失误则自动上报到失误榜。
+- **战斗结束时**，MCP 会注入 `[COMBAT_REVIEW_PENDING]...[/COMBAT_REVIEW_PENDING]` 块，包含整场战斗的战略摘要。
+- **看到此块时**：同样 fire-and-forget 一个 `task` sub-agent（模板见战斗策略技能"第零步 B"），不等待结果，继续正常游戏流程。
+- Sub-agent 从全局角度分析跨回合的战略失误（HP效率、击杀优先级、能力牌时机、减益维护、资源浪费等）。
 
 - **内容结构**（使用结构化 Chain-of-Thought）：
   ```

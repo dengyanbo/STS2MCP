@@ -484,3 +484,55 @@ Root causes:
 - **重振精神 consumed engine pieces** — lost 薪火之源 permanently when used for emergency block
 - **符文金字塔 anti-synergy** — retaining 狂乱逃离 cards clogged hand, wasting energy on escape instead of damage
 - **No vuln maintenance** — 痛击+ alone couldn't maintain vuln uptime on boss for consistent 1.5x damage
+
+## Run #12
+
+- **Date:** 2026-04-09
+- **Character:** 铁甲战士 (Ironclad)
+- **Result:** ❌ Defeated at Act 1 Boss (Floor 17)
+- **Ascension:** 0
+- **Boss:** 瀑布巨兽 (Waterfall Giant) — 250 HP, 蒸汽喷发 mechanic, heals
+
+### Deck (15 cards)
+- 打击 ×4, 防御 ×2, 防御+ ×2, 痛击+ (2), 放血 (0), 武装 (1), 凶恶 [Power] (0), 耸肩无视 (1), 欺凌 (0), 战栗 (1)
+
+### Relics
+- 燃烧之血 (+6HP post-combat), 熔岩石 (Boss drops +2 relics), 节日拉炮 (9 AOE at combat start)
+
+### Potions
+- 明耀酊剂 (used T1 of boss fight for +1 energy)
+
+### Death Cause
+**瀑布巨兽 DeathBlow mechanic**: Boss has 蒸汽喷发 (Steam Eruption) that grows +3 per turn. When boss HP reaches 0, it enters Phase 2 (999999999 HP, invulnerable) and performs a DeathBlow equal to accumulated 蒸汽 value. After 11 rounds of combat, 蒸汽 reached 42. Phase 2 DeathBlow dealt 42 damage vs 21 block + 11 HP = 32 total. Died with -10 effective HP.
+
+Root causes:
+1. **Too many rounds to kill** — 11 rounds to deplete 250HP. Boss heals ~15HP per heal turn, extending the fight and letting 蒸汽 scale to lethal.
+2. **Insufficient burst damage** — No heavy hitters (重刀/旋风斩/恶魔形态). Best single card was 欺凌 (~27-33 damage with high vuln stacks).
+3. **HP attrition** — Entered boss at 52/80HP (Floor 16 rest), dropped to 14HP by R10 from boss attacks. Couldn't survive DeathBlow.
+4. **放血 self-damage** — Used 放血 3 times during boss fight (-9 total HP). At 11HP entering Phase 2, this was the margin of death.
+
+### Key Moments
+1. **Ancient Event (Floor 1):** Chose 熔岩石 (+2 Boss relic drops). Lost 2 card choices but extra relics have huge snowball value.
+2. **Floor 4 Shop:** Removed 打击, bought 凶恶 at 39g discount. 凶恶 became the engine for the entire run (draw on vuln apply).
+3. **Floor 8 Event:** Enchanted 凶恶 with 迅速2 (first play draws 2). Power card with draw = excellent early setup.
+4. **Floor 9 (下水道蚌):** Used 武装 to upgrade 痛击→痛击+ for exact kill line. Tight resource management.
+5. **Floor 15 (地精佣兵):** Boss split mechanic + 偷窃 stole 80g regardless of block. Lost significant economy.
+6. **Boss R4:** Free offense turn — dealt 54 damage (战栗→欺凌→痛击→放血→打击×3). Best single turn.
+7. **Boss R6:** 放血→战栗→欺凌(33伤!)→痛击→武装+防御. Perfect 0-damage turn with 36 damage dealt.
+8. **Boss R9:** Free offense turn again — 放血→欺凌(27)→耸肩→打击→痛击+(15)→武装. Boss down to 21HP.
+9. **Boss R11:** Kill line reached — 打击+痛击+=24伤 killed boss. Phase 2 triggered with 蒸汽42 DeathBlow.
+10. **Boss R12:** 21 block + 11HP = 32 < 42 DeathBlow. Dead.
+
+### What Went Right
+- **Vuln engine worked beautifully** — 凶恶+痛击+战栗+欺凌 created a self-sustaining draw+damage machine
+- **Lean deck (15 cards)** — Consistent draws, saw key cards every 2-3 turns
+- **Perfect defense turns** — R3 (18挡=0损), R6 (13挡=0损), R7 (16挡=0损), R8 (10挡=0损)
+- **Strategic 放血 usage** — Converted free turns into energy for extra damage
+- **武装 upgrading** — Upgraded 痛击→痛击+(7伤+3vuln) and multiple 防御→防御+ during combat
+
+### What Went Wrong
+- **Unknown boss mechanic: DeathBlow** — Didn't know 蒸汽喷发 becomes a mandatory survival check. Needed HP+block ≥ 蒸汽 value.
+- **Fight took too long (11 rounds)** — Boss heals ~15HP per heal turn. Need to kill in 6-7 rounds max to keep 蒸汽 manageable (<24).
+- **HP management failed** — 放血 drained 9HP total during boss fight. Without放血 self-damage, would have had 20HP → 20+21=41 vs 42. Still dead but by 1HP.
+- **No heavy burst damage** — Needed 重刀 or similar for 30+ damage single attacks to speed up the kill.
+- **Defensive weakness回合 wasted** — R8 with虚弱, only dealt 4 damage total. Should have invested in vuln maintenance instead.
