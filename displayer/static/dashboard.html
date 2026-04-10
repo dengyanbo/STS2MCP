@@ -459,7 +459,6 @@
     border-bottom: 1px solid var(--border);
     background: #141428;
     flex-shrink: 0;
-    display: none;
   }
 
   #sub-thinking-panel .panel-header {
@@ -646,10 +645,10 @@
         <div class="mistake-empty" id="mistakesEmpty">本场战斗暂无失误</div>
       </div>
     </div>
-    <div id="sub-thinking-panel">
-      <div class="panel-header">🤖 子Agent 分析 <span class="badge" id="subThinkingBadge" style="display:none">0</span></div>
+    <div id="sub-thinking-panel" style="display:none">
+      <div class="panel-header">🔮 伏笔检测员 <span class="badge" id="subThinkingBadge" style="display:none">0</span></div>
       <div id="sub-thinking-content">
-        <div class="sub-thinking-empty" id="subThinkingEmpty">等待子Agent开始分析...</div>
+        <div class="sub-thinking-empty" id="subThinkingEmpty">等待伏笔检测员开始分析...</div>
       </div>
     </div>
     <div id="messages">
@@ -1216,7 +1215,7 @@ function connectSSE() {
     const emptySub = document.createElement('div');
     emptySub.className = 'sub-thinking-empty';
     emptySub.id = 'subThinkingEmpty';
-    emptySub.textContent = '等待子Agent开始分析...';
+    emptySub.textContent = '等待伏笔检测员开始分析...';
     subThinkingContent.appendChild(emptySub);
     subThinkingCount = 0;
     subThinkingBadge.textContent = '0';

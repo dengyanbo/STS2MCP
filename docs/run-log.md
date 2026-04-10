@@ -536,3 +536,53 @@ Root causes:
 - **HP management failed** — 放血 drained 9HP total during boss fight. Without放血 self-damage, would have had 20HP → 20+21=41 vs 42. Still dead but by 1HP.
 - **No heavy burst damage** — Needed 重刀 or similar for 30+ damage single attacks to speed up the kill.
 - **Defensive weakness回合 wasted** — R8 with虚弱, only dealt 4 damage total. Should have invested in vuln maintenance instead.
+
+## Run #13
+
+- **Date:** 2026-04-09
+- **Character:** 静默猎手 (The Silent) — **首次使用新角色**
+- **Result:** ❌ Defeated at Act 1 Boss (Floor 17)
+- **Ascension:** 0
+- **Boss:** 仪式兽 (Ceremonial Beast) — 252 HP, 横冲直撞(150HP击晕+清力量), 昏眩debuff(限1牌/回合)
+
+### Deck (20 cards)
+- 打击 ×4, 防御 ×5, 中和 (0), 生存者 (1), 涅奥之怒 (1, 消耗), 投掷匕首 (1), 无尽刀刃 [Power] (1), 翻越撑击 (1, 奇巧), 杂技 (1), 早有准备 (0), 余像 [Power] (1), 精准 [Power] (1), 藏宝图 (0, 死牌)
+
+### Relics
+- 蛇之戒指 (+2开局抽牌), 涅奥的苦痛 (涅奥之怒), 药水腰带 (+2药水栏), 梨子 (+10最大HP)
+
+### Potions
+- 迅捷药水 (T1浪费在Boss战摸防御), 瓶装潜能 (T6用于击晕触发)
+
+### Death Cause
+**仪式兽昏眩debuff连续致命**。Boss战打了11回合，从252→98HP(打掉61%)。引擎(余像+精准+无尽刀刃=每回合8免费伤害小刀)正常运转时输出可观。但T8和T11两次昏眩debuff(限1牌/回合)彻底瘫痪引擎——HP16时吃15伤→HP7，HP7时吃18伤→死亡。
+
+### 根因分析（深层）
+
+1. **未做战前数学**：252HP ÷ ~20伤/回合 ≈ 13回合。Boss每回合+2力量，13回合后攻击+26伤。生存窗口约8-9回合。引擎setup花3回合，实际输出只有5-6回合=输出不足。应在进Boss前就意识到DPS赤字。
+2. **引擎思维陷阱**：盲目追求"打出3个Power"，花3费(1整回合)零输出setup。对抗scaling敌人，应评估setup cost vs fight duration——如果引擎回本时间 > 生存时间，就不该全部setup。
+3. **药水当投机而非保险**：T1用迅捷药水"希望摸Power"=拿保险金赌博。正确做法：药水=应对已知威胁的精确工具。迅捷药水应留给昏眩回合（药水不算出牌→昏眩时多摸3张=废回合→有效回合）。
+4. **"知道"≠"使用"知识**：learnings明确记录仪式兽昏眩机制，但实战中没有预判昏眩时机、没有预留对策。learnings应作为战前检查清单使用。
+5. **无Plan B**：牌组高度依赖出牌量(余像+小刀)，昏眩直接关闭引擎=0输出0防御。好牌组需要resilience。
+6. **HP连锁失败**：54HP进Boss看似够，实际是整个Act的HP管理累积问题——每场小战斗花1-2回合setup Power而非速杀，导致不必要的HP损失。
+
+### Key Moments
+1. **Floor 1 (涅奥):** 选涅奥的苦痛(涅奥之怒)，稳健开局。
+2. **Floor 5 (史莱姆群):** 翻越撑击AOE首次大放异彩。获得无尽刀刃Power。
+3. **Floor 7 (精英多尼斯异鸟):** 消亡粉末(9伤/回合)完美助攻，94HP精英5回合击杀。获得余像(稀有Power)。HP 12惊险过关。
+4. **Floor 8 (商店):** 移除打击+买早有准备(0费循环牌)，丢弃-奇巧引擎初步成型。
+5. **Floor 14 (墨宝):** 精准(Power,小刀+4)入手=小刀引擎升级为8伤/回合。
+6. **Floor 15 (事件):** 拿藏宝图=加入死牌。Boss战中多次抽到占手牌位。
+7. **Boss T1:** 迅捷药水浪费(抽到全防御)。打出余像+精准(2/3 Power)。
+8. **Boss T6:** 小刀+打击×2触发横冲直撞→Boss击晕+清8力量。关键转折但HP已低(16)。
+9. **Boss T8/T11:** 连续昏眩。T8: HP16→7(无法全挡15伤)。T11: HP7→0(18伤致命)。
+
+### What Went Right
+- **丢弃-奇巧引擎**验证成功：早有准备/杂技/投掷匕首/生存者弃翻越撑击=免费7AOE
+- **余像+精准+无尽刀刃**三Power引擎在正常回合输出强劲(8免费小刀伤害+被动格挡)
+- 消亡粉末在精英战完美使用(省20+HP)
+- 中和虚弱持续减伤
+
+### What Went Wrong
+- **战略级**：未做kill math、引擎setup cost过高、药水用途错误、藏宝图死牌、无disruption resilience
+- **战术级**：combat_batch反复失败(藏宝图中断)、昏眩时选防御而非生存者(差3HP)、虚弱覆盖不连续
